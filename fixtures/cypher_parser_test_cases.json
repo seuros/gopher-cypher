@@ -1,0 +1,62 @@
+[
+  {
+    "description": "Basic return of parameters",
+    "query": "RETURN $p1, $p2"
+  },
+  {
+    "description": "Math with parameters",
+    "query": "RETURN $a + $b, $c - $d"
+  },
+  {
+    "description": "Coalesce with parameters",
+    "query": "RETURN coalesce($x, $y, \"fallback\") AS result"
+  },
+  {
+    "description": "Case statement with parameters",
+    "query": "RETURN CASE WHEN $a = $b THEN $c ELSE $d END"
+  },
+  {
+    "description": "Unwind a parameterized list",
+    "query": "UNWIND $items AS item RETURN item"
+  },
+  {
+    "description": "Match with parameter and filter",
+    "query": "MATCH (n:User {id: $id}) RETURN n"
+  },
+  {
+    "description": "Match with WHERE clause",
+    "query": "MATCH (n) WHERE n.age > $age RETURN n"
+  },
+  {
+    "description": "MERGE with ON CREATE SET",
+    "query": "MERGE (n:User {email: $email}) ON CREATE SET n.created_at = $ts"
+  },
+  {
+    "description": "FOREACH loop with parameter list",
+    "query": "FOREACH (x IN $list | SET x.flag = true)"
+  },
+  {
+    "description": "CALL subquery with RETURN",
+    "query": "CALL { RETURN $x AS foo } RETURN foo"
+  },
+  {
+    "description": "Pagination with parameters",
+    "query": "MATCH (n) RETURN n SKIP $skip LIMIT $limit"
+  },
+  {
+    "description": "Aggregation and aliasing",
+    "query": "RETURN collect($item) AS items"
+  },
+  {
+    "description": "Load CSV from parameter URL",
+    "query": "LOAD CSV WITH HEADERS FROM $url AS row RETURN row"
+  },
+  {
+    "description": "WITH clause with WHERE and RETURN",
+    "query": "WITH $a AS x, $b AS y WHERE x > y RETURN x"
+  },
+  {
+    "description": "SET and DELETE combined",
+    "query": "MATCH (n) SET n.name = $name DELETE n"
+  }
+]

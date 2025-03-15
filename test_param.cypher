@@ -1,0 +1,1 @@
+MATCH (n:User) WHERE n.age > $minAge RETURN n.name

@@ -1,0 +1,1 @@
+RETURN collect($item) AS items
