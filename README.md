@@ -59,17 +59,14 @@ func main() {
     // Connect with comprehensive configuration
     config := &driver.Config{
         Logging: &driver.LoggingConfig{
-            Logger:              &driver.ConsoleLogger{Level: driver.InfoLevel},
-            LogQueryTiming:      true,
-            LogConnectionPool:   true,
-            LogBoltMessages:     false,
-        },
-        TLS: &driver.TLSConfig{
-            Mode: driver.TLSModeSSL,
+            Logger:            driver.NewConsoleLogger(driver.LogLevelInfo),
+            LogQueryTiming:    true,
+            LogConnectionPool: true,
+            LogBoltMessages:   false,
         },
     }
 
-    dr, err := driver.NewDriverWithConfig("bolt://user:pass@localhost:7687", config)
+    dr, err := driver.NewDriverWithConfig("neo4j://user:pass@localhost:7687", config)
     if err != nil {
         log.Fatal(err)
     }
@@ -215,7 +212,7 @@ dr, _ := driver.NewDriverWithConfig(url, config)
 ```go
 import (
     "go.opentelemetry.io/otel"
-    "go.opentelemetry.io/otel/trace"
+    "go.opentelemetry.io/otel/attribute"
 )
 
 // Configure with OpenTelemetry
@@ -245,15 +242,17 @@ _, _, summary, _ := dr.RunWithContext(ctx, "MATCH (u:User) RETURN u", nil, nil)
 ### Multiple TLS Modes
 ```go
 // Production with certificate verification
-driver.NewDriver("bolt+ssl://user:pass@graphdb.example.com:7687")
+driver.NewDriver("neo4j+ssl://user:pass@graphdb.example.com:7687")
 
 // Development with self-signed certificates
-driver.NewDriver("bolt+ssc://user:pass@localhost:7687")
+driver.NewDriver("neo4j+ssc://user:pass@localhost:7687")
 
-// Custom TLS configuration
+// For Memgraph, use the memgraph scheme:
+driver.NewDriver("memgraph+ssl://user:pass@memgraph.example.com:7687")
+
+// Custom TLS configuration (overrides URL defaults)
 config := &driver.Config{
     TLS: &driver.TLSConfig{
-        Mode: driver.TLSModeCustom,
         Config: &tls.Config{
             ServerName: "my-graph-server",
             RootCAs:    customCertPool,
@@ -274,9 +273,9 @@ if err != nil {
 }
 
 // Automatic injection protection
-p.Parse("RETURN 1; DROP DATABASE;")        //  Blocked: Multiple statements
-p.Parse("MATCH (n) WHERE 1=1 OR 'a'='a'") //  Blocked: Injection pattern
-p.Parse("RETURN 'unsafe'")                 //  Blocked: Single quotes
+// Current validation is conservative: blocks multi-statement and single quotes.
+p.Parse("RETURN 1; DROP DATABASE;") //  Blocked: Multiple statements
+p.Parse("RETURN 'unsafe'")          //  Blocked: Single quotes
 ```
 
 ##  **CLI Tools & IDE Integration**
@@ -297,19 +296,22 @@ cyq inspect complex-query.cypher
 cyq lsp
 ```
 
-### Universal IDE Support
+### Universal IDE Support (LSP)
 Works with **any LSP-capable editor**:
-- **VSCode** - Intelligent completion and hover
-- **IntelliJ/GoLand** - Advanced syntax analysis
-- **Vim/Neovim** - Lightweight integration
-- **Emacs** - Full language support
-- **Zed, Sublime Text** - Modern editor support
+- **VSCode**
+- **IntelliJ/GoLand**
+- **Vim/Neovim**
+- **Emacs**
+- **Zed, Sublime Text**
 
-Features:
--  **Smart completion** - Cypher keywords, labels, functions
--  **Hover information** - AST details and documentation
--  **Auto-formatting** - Consistent query styling
--  **Security warnings** - Real-time injection detection
+Current LSP server provides:
+- Keyword completion for core Cypher clauses
+- Basic hover placeholder text
+
+Roadmap / PRs welcome:
+- Real-time diagnostics for parse/security errors
+- Auto-formatting via `cyq fmt`
+- Schema-aware completion (labels, functions)
 
 ##  **Performance & Scalability**
 
@@ -347,10 +349,11 @@ throttled.Subscribe(ctx, slowSubscriber)
 ```go
 config := &driver.Config{
     ConnectionPool: &driver.PoolConfig{
-        MaxSize:         50,
-        IdleTimeout:     30 * time.Second,
-        MaxLifetime:     1 * time.Hour,
-        HealthCheckInterval: 10 * time.Second,
+        MaxConnections:      50,
+        MaxIdleTime:         30 * time.Second,
+        ConnectionLifetime:  1 * time.Hour,
+        AcquisitionTimeout:  30 * time.Second,
+        EnableLivenessCheck: true,
     },
 }
 ```
@@ -417,11 +420,11 @@ make test             # Run full test suite
 
 Compatible with Cypher-based graph databases using the Bolt protocol:
 
-- **Bolt Protocol** - Full v5.2/v5.8 support
-- **TLS** - All configurations supported
-- **Cypher** - Complete query language compatibility
+- **Bolt Protocol** - negotiates v5.2/v5.8 and implements core messages used by the driver
+- **TLS** - URL-driven `+ssl/+ssc` plus custom `tls.Config` support
+- **Cypher** - driver executes arbitrary Cypher; parser/formatter supports a growing subset
 
-Tested with Neo4j, Memgraph, and other Bolt-compatible databases.
+Tested against Neo4j and Memgraph in CI.
 
 ##  **Testing & Quality**
 
@@ -433,30 +436,30 @@ go test -bench=. -benchmem ./...  # Performance benchmarks
 ```
 
 ### Production Ready
-- **1000+ test cases** across all components
-- **Extensive benchmarks** for performance validation
-- **Memory leak testing** for long-running applications
-- **Concurrency testing** for thread safety
-- **Integration testing** with real databases
+- Solid unit and integration test coverage (~125 tests today)
+- Benchmarks for parser and query construction
+- Concurrency-safe driver, streaming, and reactive layers
+- CI runs against live Neo4j and Memgraph
 
-##  **Parser Coverage: 80%**
+##  **Parser Coverage (current subset)**
+
+The parser is intentionally conservative and currently covers ~80% of the fixtures in `src/parser/testdata`.
 
 ###  **Fully Supported**
-- `MATCH` patterns with complex relationships
-- `WHERE` conditions with all operators
-- `RETURN` with aliases, functions, expressions
-- `SET`, `MERGE`, `UNWIND`, `REMOVE` operations
-- **Parameters** - Complete `$parameter` support
-- **Functions** - Built-in and custom functions
-- **Math expressions** - Complex calculations
-- **Security validation** - Injection prevention
+- `MATCH` / `MERGE` of a single node pattern, optional label
+- `WHERE` with a single property comparison (`=, !=, >, >=, <, <=`)
+- `RETURN` items: property access, aliases (`AS`), function calls, basic `+`/`-` math
+- `SET`, `UNWIND`, `REMOVE` operations
+- `SKIP` / `LIMIT` with integer or `$param`
+- `$param` tokens in supported positions
+- Basic safety checks: blocks semicolons and single-quoted strings
 
-### **Coming Soon (PRs Welcome)**
-- Advanced `CALL` procedures
-- Complex relationship patterns
-- `ORDER BY` optimizations
+### **Not Yet Supported**
+- Relationship patterns and multi-part graph patterns
+- `CREATE`, `DELETE`, `CALL`, `WITH`, `ORDER BY`, `OPTIONAL MATCH`
+- Boolean expression chaining (`AND`/`OR`), maps, comprehensions, etc.
 
-*I'll write these when I need them. Using ActiveCypher for now—maybe in summer.*
+PRs welcome.
 ##  **Get Started**
 
 1. **Install**: `go get github.com/seuros/gopher-cypher`

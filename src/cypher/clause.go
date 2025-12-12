@@ -15,6 +15,7 @@ const (
 	RemoveClause
 	ReturnClause
 	SetClause
+	OrderByClause // Not in current grammar.go but for completeness
 	SkipClause
 	LimitClause
 	UnwindClause
@@ -58,6 +59,8 @@ func ClauseOrder(c Clause) int {
 		return 21
 	case ReturnClause:
 		return 37
+	case OrderByClause:
+		return 41
 	case SkipClause:
 		return 43
 	case LimitClause:

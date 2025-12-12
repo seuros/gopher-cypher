@@ -38,11 +38,10 @@ Here's how you might construct and compile this:
 package main
 
 import (
-	"fmt"
-	"log"
+		"fmt"
 
-	"github.com/seuros/gopher-cypher/src/cypher" // Assuming this is the correct import path
-)
+		"github.com/seuros/gopher-cypher/src/cypher"
+	)
 
 func main() {
 	// 1. Create a LiteralNode for the string
@@ -65,8 +64,7 @@ func main() {
 	fmt.Println(queryString)
 	fmt.Println("Parameters:")
 	for k, v := range params {
-		fmt.Printf("%s: %v
-", k, v)
+		fmt.Printf("%s: %v\n", k, v)
 	}
 
 	// Expected Output:
@@ -85,103 +83,52 @@ func main() {
 Let's construct a query like: `MATCH (n:Person) WHERE n.name = "CHAD" RETURN n.age`
 
 This involves:
-1.  A `PatternNode` for `(n:Person)`. (Assuming a `PatternNode` or similar construct exists. The actual representation might involve `NodeIdentifier`, `Label` etc. within a `MatchNode`'s pattern field).
-2.  A `MatchNode` to encapsulate the pattern.
-3.  An `Expression` or a specific node type for the `n.name = "CHAD"` condition. This might be a `ComparisonExpression` or similar.
-4.  A `WhereNode` to hold the condition.
-5.  An `Expression` for `n.age`.
-6.  A `ReturnNode` for `RETURN n.age`.
+1.  A `MatchNode` with a simple pattern string.
+2.  A `WhereNode` holding a comparison expression.
+3.  A `ReturnNode` selecting a property.
+
+Because variable identifiers should not be parameterized, this example uses a small `RawExpr` helper to inline them.
 
 ```go
 package main
 
 import (
 	"fmt"
-	"log"
 
-	"github.com/seuros/gopher-cypher/src/cypher" // Assuming this is the correct import path
+	"github.com/seuros/gopher-cypher/src/cypher"
 )
 
-func main() {
-	// It's highly likely that specific structs exist for patterns, expressions, etc.
-	// This is a conceptual example. The actual node construction will depend
-	// on the precise definitions in the src/cypher/ package.
+// RawExpr is a small helper for inlining identifiers or snippets that should not be parameterized.
+type RawExpr string
 
-	// Representing the pattern (n:Person)
-	// This is speculative. The actual API for creating patterns might be different.
-	// For instance, there might be functions like cypher.NodePattern("n", "Person", nil)
-	pattern := cypher.PatternNode{ // Assuming PatternNode exists
-		Path: []cypher.PathElement{ // PathElement is also an assumption
-			{
-				Node: &cypher.NodePattern{ // NodePattern is an assumption
-					Variable: "n",
-					Labels:   []string{"Person"},
-				},
+func (r RawExpr) BuildCypher(q *cypher.Query) string {
+	return string(r)
+}
+
+func main() {
+	matchClause := &cypher.MatchNode{
+		Pattern: "(n:Person)",
+	}
+
+	whereClause := &cypher.WhereNode{
+		Conditions: []cypher.Expression{
+			&cypher.ComparisonExpr{
+				LHS: RawExpr("n.name"),
+				Op:  "=",
+				RHS: &cypher.LiteralExpr{Value: "CHAD"},
 			},
 		},
 	}
 
-	// 1. MatchNode
-	matchClause := &cypher.MatchNode{
-		Pattern: pattern, // Or however patterns are supplied
-	}
-
-	// 2. WhereNode
-	// Representing n.name = "CHAD"
-	// This likely involves an Expression type.
-	// Example: cypher.Equals(cypher.Property("n", "name"), cypher.Literal("CHAD"))
-	// For simplicity, we'll use a placeholder string, though in reality,
-	// this would be a structured Expression.
-	whereCondition := cypher.Expression{ // Placeholder, this would be a structured expression
-		// This is a simplified representation.
-		// Actual implementation would use specific expression types.
-		Representation: "n.name = $param1", // Example, actual structure needed
-	}
-	// The compiler handles parameter registration. Let's assume "CHAD" would be registered.
-	// To make this runnable, we'd need to ensure "CHAD" is passed in a way the
-	// compiler can create a parameter for it, or use a LiteralNode if appropriate.
-	// For the purpose of this example, let's assume the Expression handles it.
-
-	whereClause := &cypher.WhereNode{
-		Conditions: []cypher.Expression{whereCondition},
-	}
-
-	// 3. ReturnNode
-	// Representing n.age
-	// Example: cypher.Property("n", "age")
-	returnItem := cypher.Expression{ // Placeholder
-		Representation: "n.age",
-	}
 	returnClause := &cypher.ReturnNode{
-		Items: []interface{}{returnItem},
+		Items: []interface{}{RawExpr("n.age")},
 	}
 
-	// 4. Compile the AST
 	compiler := cypher.NewCompiler()
-	queryString, params := compiler.Compile(matchClause, whereClause, returnClause) // Pass nodes in order
+	queryString, params := compiler.Compile(matchClause, whereClause, returnClause)
 
-	fmt.Println("Generated Cypher Query:")
 	fmt.Println(queryString)
-	fmt.Println("Parameters:")
-	// In a real scenario, "CHAD" would be in params if `whereCondition` was a proper LiteralNode
-	// or if the Expression system registered it.
-	// For this conceptual example, params might be empty or contain what the
-	// simplified Expression placeholder implied. Let's assume "CHAD" became p1.
-	// To make this fully work, `literalCHAD := &cypher.LiteralNode{Value: "CHAD"}`
-	// would be used in the expression for `n.name = $p1`
-	// and params would then contain `p1: "CHAD"`.
-
-	// A more realistic parameter setup if LiteralNode was used for "CHAD":
-	// params["param1"] = "CHAD" // Or whatever key the compiler generates
-
-	fmt.Println("--- Conceptual Output ---")
-	fmt.Println("MATCH (n:Person)")
-	fmt.Println("WHERE n.name = $p1") // Assuming "CHAD" is parameterized
-	fmt.Println("RETURN n.age")
-	fmt.Println("Parameters: {p1: "CHAD"}") // Ideal parameters
-
-	// Actual output will depend heavily on how PatternNode and Expression are truly implemented
-	// and how they interact with the compiler for parameterization.
+	fmt.Println("Parameters:", params)
 }
 ```
 

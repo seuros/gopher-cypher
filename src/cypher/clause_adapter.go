@@ -44,6 +44,20 @@ func (c *ClauseAdapter) Type() ClauseType {
 		return RemoveClause
 	case *ReturnNode:
 		return ReturnClause
+	case *WithNode:
+		return WithClause
+	case *OrderByNode:
+		return OrderByClause
+	case *ProcedureCallNode:
+		return CallClause
+	case *CallSubqueryNode:
+		return CallClause
+	case *DeleteNode:
+		return DeleteClause
+	case *ForeachNode:
+		return ForeachClause
+	case *LoadCSVNode:
+		return LoadCSVClause
 	case *SkipNode:
 		return SkipClause
 	case *LimitNode:

@@ -92,7 +92,9 @@ func (c *Compiler) formatArrayLiteral(arr []interface{}) string {
 	for i, el := range arr {
 		switch v := el.(type) {
 		case string:
-			parts[i] = fmt.Sprintf("'%s'", v)
+			escaped := strings.ReplaceAll(v, "\\", "\\\\")
+			escaped = strings.ReplaceAll(escaped, "\"", "\\\"")
+			parts[i] = fmt.Sprintf("\"%s\"", escaped)
 		case []interface{}:
 			parts[i] = c.formatArrayLiteral(v)
 		default:
