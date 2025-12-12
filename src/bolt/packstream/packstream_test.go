@@ -329,3 +329,118 @@ func TestCorruptedInputStream(t *testing.T) {
 		t.Errorf("Expected error for invalid marker, got none")
 	}
 }
+
+func TestPackTypedSlices(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    interface{}
+		expected []byte
+	}{
+		{"[]string", []string{"a", "b", "c"}, []byte{0x93, 0x81, 'a', 0x81, 'b', 0x81, 'c'}},
+		{"[]int", []int{1, 2, 3}, []byte{0x93, 0x01, 0x02, 0x03}},
+		{"[]int64", []int64{1, 2, 3}, []byte{0x93, 0x01, 0x02, 0x03}},
+		{"[]bool", []bool{true, false}, []byte{0x92, 0xC3, 0xC2}},
+		{"empty []string", []string{}, []byte{0x90}},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			buf := &bytes.Buffer{}
+			p := NewPacker(buf)
+			err := p.Pack(test.input)
+			if err != nil {
+				t.Fatalf("Failed to pack %s: %v", test.name, err)
+			}
+
+			got := buf.Bytes()
+			if !bytes.Equal(got, test.expected) {
+				t.Errorf("Expected %X, got %X", test.expected, got)
+			}
+
+			// Test unpacking roundtrip
+			u := NewUnpacker(bytes.NewReader(got))
+			val, err := u.Unpack()
+			if err != nil {
+				t.Fatalf("Failed to unpack: %v", err)
+			}
+
+			// Result will be []interface{}, verify contents
+			if arr, ok := val.([]interface{}); ok {
+				rv := reflect.ValueOf(test.input)
+				if len(arr) != rv.Len() {
+					t.Errorf("Length mismatch: got %d, want %d", len(arr), rv.Len())
+				}
+			}
+		})
+	}
+}
+
+func TestPackMapWithTypedSlice(t *testing.T) {
+	// Test that typed slices work when nested in maps
+	obj := map[string]interface{}{
+		"tags":   []string{"go", "neo4j", "bolt"},
+		"scores": []int{100, 200, 300},
+	}
+
+	data, err := Pack(obj)
+	if err != nil {
+		t.Fatalf("Failed to pack map with typed slices: %v", err)
+	}
+
+	result, err := Unpack(data)
+	if err != nil {
+		t.Fatalf("Failed to unpack: %v", err)
+	}
+
+	resultMap := result.(map[string]interface{})
+
+	tags := resultMap["tags"].([]interface{})
+	if len(tags) != 3 || tags[0] != "go" || tags[1] != "neo4j" || tags[2] != "bolt" {
+		t.Errorf("Tags mismatch: %v", tags)
+	}
+
+	scores := resultMap["scores"].([]interface{})
+	if len(scores) != 3 || scores[0] != int64(100) || scores[1] != int64(200) || scores[2] != int64(300) {
+		t.Errorf("Scores mismatch: %v", scores)
+	}
+}
+
+func TestPackTypedSliceAliases(t *testing.T) {
+	type MyStrings []string
+	type MyInts []int
+
+	tests := []struct {
+		name     string
+		input    interface{}
+		expected []byte
+	}{
+		{"MyStrings", MyStrings{"a", "b"}, []byte{0x92, 0x81, 'a', 0x81, 'b'}},
+		{"MyInts", MyInts{1, 2, 3}, []byte{0x93, 0x01, 0x02, 0x03}},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			buf := &bytes.Buffer{}
+			p := NewPacker(buf)
+			if err := p.Pack(test.input); err != nil {
+				t.Fatalf("Failed to pack %s: %v", test.name, err)
+			}
+			if got := buf.Bytes(); !bytes.Equal(got, test.expected) {
+				t.Errorf("Expected %X, got %X", test.expected, got)
+			}
+		})
+	}
+}
+
+func TestPackByteSliceFailsWithoutWriting(t *testing.T) {
+	buf := &bytes.Buffer{}
+	p := NewPacker(buf)
+
+	err := p.Pack([]byte{0x01, 0x02})
+	if err == nil {
+		t.Fatalf("Expected error for []byte, got nil")
+	}
+	if buf.Len() != 0 {
+		t.Fatalf("Expected no bytes written on []byte error, wrote %d", buf.Len())
+	}
+}

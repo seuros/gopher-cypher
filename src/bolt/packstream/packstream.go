@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"reflect"
 )
 
 // Marker Bytes & Limits
@@ -81,6 +82,11 @@ func (p *Packer) Pack(value interface{}) error {
 		return p.packString(v)
 	case map[string]interface{}:
 		return p.packMap(v)
+	case []byte:
+		// PackStream supports a dedicated "Bytes" type, but this implementation
+		// does not currently implement it. Without this case, the reflect-slice
+		// fallback would start writing a list header and then fail on uint8 elems.
+		return &ProtocolError{Message: "Cannot pack type: []byte (bytes are not supported)"}
 	case int, int8, int16, int32, int64:
 		// Convert to int64 for consistent handling
 		var intValue int64
@@ -107,8 +113,30 @@ func (p *Packer) Pack(value interface{}) error {
 	case []interface{}:
 		return p.packList(v)
 	default:
+		// Use reflection to handle typed slices ([]string, []int, etc.)
+		rv := reflect.ValueOf(value)
+		if rv.Kind() == reflect.Slice {
+			return p.packReflectSlice(rv)
+		}
 		return &ProtocolError{Message: fmt.Sprintf("Cannot pack type: %T", v)}
 	}
+}
+
+func (p *Packer) packListHeader(size int) error {
+	if size < 16 { // TinyList
+		return p.writeMarker([]byte{TINY_LIST_MARKER_BASE | byte(size)})
+	}
+	if size < 256 { // LIST_8
+		return p.writeMarker([]byte{LIST_8_MARKER, byte(size)})
+	}
+	if size < 65536 { // LIST_16
+		var header [3]byte
+		header[0] = LIST_16_MARKER
+		binary.BigEndian.PutUint16(header[1:], uint16(size))
+		return p.writeMarker(header[:])
+	}
+
+	return &ProtocolError{Message: fmt.Sprintf("List too large to pack (size: %d)", size)}
 }
 
 func (p *Packer) packString(str string) error {
@@ -165,30 +193,30 @@ func (p *Packer) packMap(m map[string]interface{}) error {
 }
 
 func (p *Packer) packList(list []interface{}) error {
-	size := len(list)
-
-	if size < 16 { // TinyList
-		if err := p.writeMarker([]byte{TINY_LIST_MARKER_BASE | byte(size)}); err != nil {
-			return err
-		}
-	} else if size < 256 { // LIST_8
-		if err := p.writeMarker([]byte{LIST_8_MARKER, byte(size)}); err != nil {
-			return err
-		}
-	} else if size < 65536 { // LIST_16
-		marker := []byte{LIST_16_MARKER}
-		sizeBytes := make([]byte, 2)
-		binary.BigEndian.PutUint16(sizeBytes, uint16(size))
-		if err := p.writeMarker(append(marker, sizeBytes...)); err != nil {
-			return err
-		}
-	} else {
-		return &ProtocolError{Message: fmt.Sprintf("List too large to pack (size: %d)", size)}
+	if err := p.packListHeader(len(list)); err != nil {
+		return err
 	}
 
 	// Pack each item in the list
 	for _, item := range list {
 		if err := p.Pack(item); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// packReflectSlice handles typed slices via reflection ([]string, []int, etc.)
+func (p *Packer) packReflectSlice(rv reflect.Value) error {
+	size := rv.Len()
+	if err := p.packListHeader(size); err != nil {
+		return err
+	}
+
+	// Pack each item
+	for i := 0; i < size; i++ {
+		if err := p.Pack(rv.Index(i).Interface()); err != nil {
 			return err
 		}
 	}
