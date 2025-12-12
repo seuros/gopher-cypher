@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"strconv"
@@ -13,7 +14,8 @@ import (
 )
 
 type SimpleServer struct {
-	parser *parser.Parser
+	parser    *parser.Parser
+	documents map[string]string
 }
 
 type Message struct {
@@ -48,6 +50,24 @@ type CompletionOptions struct {
 	TriggerCharacters []string `json:"triggerCharacters"`
 }
 
+// LSP diagnostic shapes (minimal subset)
+type Position struct {
+	Line      int `json:"line"`
+	Character int `json:"character"`
+}
+
+type Range struct {
+	Start Position `json:"start"`
+	End   Position `json:"end"`
+}
+
+type Diagnostic struct {
+	Range    Range  `json:"range"`
+	Severity int    `json:"severity,omitempty"` // 1=Error,2=Warning
+	Source   string `json:"source,omitempty"`
+	Message  string `json:"message"`
+}
+
 func StartSimpleServer() error {
 	log.SetOutput(os.Stderr)
 	log.Println("Starting simple Cypher LSP server...")
@@ -57,7 +77,10 @@ func StartSimpleServer() error {
 		return err
 	}
 
-	server := &SimpleServer{parser: p}
+	server := &SimpleServer{
+		parser:    p,
+		documents: make(map[string]string),
+	}
 	scanner := bufio.NewScanner(os.Stdin)
 
 	for scanner.Scan() {
@@ -74,8 +97,7 @@ func StartSimpleServer() error {
 
 			// Read message content
 			content := make([]byte, length)
-			_, err = os.Stdin.Read(content)
-			if err != nil {
+			if _, err = io.ReadFull(os.Stdin, content); err != nil {
 				continue
 			}
 
@@ -123,6 +145,12 @@ func (s *SimpleServer) handleMessage(msg *Message) *Message {
 	case "exit":
 		os.Exit(0)
 		return nil
+	case "textDocument/didOpen":
+		s.handleDidOpen(msg.Params)
+		return nil
+	case "textDocument/didChange":
+		s.handleDidChange(msg.Params)
+		return nil
 	case "textDocument/hover":
 		return &Message{
 			JsonRPC: "2.0",
@@ -164,4 +192,77 @@ func (s *SimpleServer) sendResponse(msg *Message) {
 	}
 
 	fmt.Printf("Content-Length: %d\r\n\r\n%s", len(data), data)
+}
+
+func (s *SimpleServer) sendNotification(method string, params interface{}) {
+	s.sendResponse(&Message{
+		JsonRPC: "2.0",
+		Method:  method,
+		Params:  params,
+	})
+}
+
+func (s *SimpleServer) handleDidOpen(params interface{}) {
+	m, ok := params.(map[string]interface{})
+	if !ok {
+		return
+	}
+	doc, ok := m["textDocument"].(map[string]interface{})
+	if !ok {
+		return
+	}
+	uri, _ := doc["uri"].(string)
+	text, _ := doc["text"].(string)
+	if uri == "" {
+		return
+	}
+	s.documents[uri] = text
+	s.publishDiagnostics(uri, text)
+}
+
+func (s *SimpleServer) handleDidChange(params interface{}) {
+	m, ok := params.(map[string]interface{})
+	if !ok {
+		return
+	}
+	doc, ok := m["textDocument"].(map[string]interface{})
+	if !ok {
+		return
+	}
+	uri, _ := doc["uri"].(string)
+	if uri == "" {
+		return
+	}
+	changes, ok := m["contentChanges"].([]interface{})
+	if !ok || len(changes) == 0 {
+		return
+	}
+	// We advertise full sync (TextDocumentSync=1), so take full text.
+	last, _ := changes[len(changes)-1].(map[string]interface{})
+	text, _ := last["text"].(string)
+	s.documents[uri] = text
+	s.publishDiagnostics(uri, text)
+}
+
+func (s *SimpleServer) publishDiagnostics(uri, text string) {
+	var diags []Diagnostic
+
+	if _, err := s.parser.Parse(text); err != nil {
+		// We don't currently extract precise locations from parser errors.
+		// Emit a file-level diagnostic.
+		diags = append(diags, Diagnostic{
+			Range: Range{
+				Start: Position{Line: 0, Character: 0},
+				End:   Position{Line: 0, Character: 1},
+			},
+			Severity: 1,
+			Source:   "gopher-cypher",
+			Message:  err.Error(),
+		})
+	}
+
+	s.sendNotification("textDocument/publishDiagnostics", map[string]interface{}{
+		"uri":         uri,
+		"diagnostics": diags,
+	})
 }
