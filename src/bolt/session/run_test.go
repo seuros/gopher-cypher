@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"net"
 	"testing"
 	"time"
@@ -26,7 +27,8 @@ func newSessionOrSkip(t *testing.T, url string) Session {
 func TestRunQuery(t *testing.T) {
 	s := newSessionOrSkip(t, "memgraph://memgraph:activecypher@localhost:7688")
 	defer s.Close()
-	cols, rows, err := s.Run("RETURN 1 AS n", map[string]interface{}{}, map[string]interface{}{})
+	ctx := context.Background()
+	cols, rows, err := s.Run(ctx, "RETURN 1 AS n", map[string]interface{}{}, map[string]interface{}{})
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
@@ -37,7 +39,7 @@ func TestRunQuery(t *testing.T) {
 		t.Fatalf("unexpected result: %v", rows)
 	}
 
-	cols, rows, err = s.Run("UNWIND range(1, 10) AS i RETURN i AS id, i * 2 AS double, 'Row ' + toString(i) AS label", map[string]interface{}{}, map[string]interface{}{})
+	cols, rows, err = s.Run(ctx, "UNWIND range(1, 10) AS i RETURN i AS id, i * 2 AS double, 'Row ' + toString(i) AS label", map[string]interface{}{}, map[string]interface{}{})
 	if err != nil {
 		t.Fatalf("%v", err)
 	}

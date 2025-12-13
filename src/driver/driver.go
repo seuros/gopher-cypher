@@ -21,9 +21,9 @@ type Driver interface {
 	// Ping verifies the server is reachable and the Bolt protocol is
 	// supported.
 	Ping() error
-	// Run executes a Cypher query with optional parameters and metadata.
+	// Run executes a Cypher query with context, optional parameters and metadata.
 	// It returns the column names and resulting rows.
-	Run(query string, params map[string]interface{}, metaData map[string]interface{}) ([]string, []map[string]interface{}, error)
+	Run(ctx context.Context, query string, params map[string]interface{}, metaData map[string]interface{}) ([]string, []map[string]interface{}, error)
 	// RunWithContext executes a Cypher query with context support and returns detailed summary.
 	// This is the recommended method for production use with observability.
 	RunWithContext(ctx context.Context, query string, params map[string]interface{}, metaData map[string]interface{}) ([]string, []map[string]interface{}, *ResultSummary, error)
@@ -63,28 +63,28 @@ func NewDriverWithConfig(urlString string, config *Config) (Driver, error) {
 	d := driver{
 		config: config,
 	}
-	
+
 	// Initialize logger
 	if config.Logging != nil && config.Logging.Logger != nil {
 		d.logger = config.Logging.Logger
 	} else {
 		d.logger = &NoOpLogger{}
 	}
-	
+
 	d.logger.Info("Initializing gopher-cypher driver", "url", urlString)
-	
+
 	// Initialize observability
 	if config.Observability != nil && (config.Observability.EnableTracing || config.Observability.EnableMetrics) {
 		d.observability = initObservability()
 		d.logger.Debug("Observability enabled", "tracing", config.Observability.EnableTracing, "metrics", config.Observability.EnableMetrics)
 	}
-	
+
 	d.urlResolver = connection_url_resolver.NewConnectionUrlResolver(urlString)
 	if d.urlResolver.ToHash() == nil {
 		d.logger.Error("Failed to resolve connection URL", "url", urlString)
 		return nil, fmt.Errorf("unable to resolve connection url: %s", urlString)
 	}
-	
+
 	urlCfg := d.urlResolver.ToHash()
 	d.logger.Debug("Connection URL resolved", "host", urlCfg.Host, "port", urlCfg.Port, "ssl", urlCfg.SSL, "database", urlCfg.Database)
 
@@ -92,25 +92,25 @@ func NewDriverWithConfig(urlString string, config *Config) (Driver, error) {
 	dialFn := func() (net.Conn, error) {
 		urlCfg := d.urlResolver.ToHash()
 		address := d.urlResolver.Address()
-		
+
 		if config.Logging != nil && config.Logging.LogConnectionPool {
 			d.logger.Debug("Opening connection", "address", address, "ssl", urlCfg.SSL, "ssc", urlCfg.SSC)
 		}
-		
+
 		if urlCfg.SSL || urlCfg.SSC {
 			// Build TLS config from driver configuration
 			tlsCfg := config.TLS.buildTLSConfig(urlCfg.Host)
-			
+
 			// Override with URL-specific settings if needed
 			if urlCfg.SSC {
 				tlsCfg.InsecureSkipVerify = true
 				d.logger.Warn("TLS certificate verification disabled (SSC mode)", "address", address)
 			}
-			
+
 			d.logger.Debug("Establishing TLS connection", "address", address, "server_name", tlsCfg.ServerName)
 			return tls.Dial("tcp", address, tlsCfg)
 		}
-		
+
 		d.logger.Debug("Establishing plain TCP connection", "address", address)
 		return net.Dial("tcp", address)
 	}
@@ -120,7 +120,7 @@ func NewDriverWithConfig(urlString string, config *Config) (Driver, error) {
 		d.logger.Error("Failed to create connection pool", "error", err)
 		return nil, err
 	}
-	
+
 	d.logger.Debug("Connection pool created successfully")
 
 	err = d.Ping()
@@ -128,7 +128,7 @@ func NewDriverWithConfig(urlString string, config *Config) (Driver, error) {
 		d.logger.Error("Initial ping failed", "error", err)
 		return nil, err
 	}
-	
+
 	d.logger.Info("Driver initialized successfully", "address", d.urlResolver.Address())
 	return &d, nil
 }

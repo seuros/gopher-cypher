@@ -8,9 +8,8 @@ import (
 	"github.com/seuros/gopher-cypher/src/internal/boltutil"
 )
 
-func (d *driver) Run(query string, params map[string]interface{}, metaData map[string]interface{}) ([]string, []map[string]interface{}, error) {
-	// Use background context for backward compatibility
-	cols, rows, _, err := d.RunWithContext(context.Background(), query, params, metaData)
+func (d *driver) Run(ctx context.Context, query string, params map[string]interface{}, metaData map[string]interface{}) ([]string, []map[string]interface{}, error) {
+	cols, rows, _, err := d.RunWithContext(ctx, query, params, metaData)
 	return cols, rows, err
 }
 

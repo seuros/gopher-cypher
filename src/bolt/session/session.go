@@ -1,10 +1,14 @@
 package session
 
-import "github.com/seuros/gopher-cypher/src/driver"
+import (
+	"context"
+
+	"github.com/seuros/gopher-cypher/src/driver"
+)
 
 type Session interface {
 	Close() error
-	Run(query string, params map[string]interface{}, metaData map[string]interface{}) ([]string, []map[string]interface{}, error)
+	Run(ctx context.Context, query string, params map[string]interface{}, metaData map[string]interface{}) ([]string, []map[string]interface{}, error)
 }
 type session struct {
 	driver driver.Driver
