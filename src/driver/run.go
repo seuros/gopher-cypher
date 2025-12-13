@@ -194,6 +194,25 @@ func (d *driver) RunWithContext(ctx context.Context, query string, params map[st
 	return cols, rows, summary, queryErr
 }
 
+// RunWithRetry executes a query with automatic retry for transient errors.
+func (d *driver) RunWithRetry(ctx context.Context, policy *RetryPolicy, query string, params map[string]interface{}, metaData map[string]interface{}) ([]string, []map[string]interface{}, error) {
+	if policy == nil {
+		policy = DefaultRetryPolicy()
+	}
+
+	type result struct {
+		cols []string
+		rows []map[string]interface{}
+	}
+
+	r, err := Retry(ctx, policy, func() (result, error) {
+		cols, rows, err := d.Run(ctx, query, params, metaData)
+		return result{cols, rows}, err
+	})
+
+	return r.cols, r.rows, err
+}
+
 // RunStream implements StreamingDriver interface for memory-efficient query processing
 func (d *driver) RunStream(ctx context.Context, query string, params map[string]interface{}, metaData map[string]interface{}) (Result, error) {
 	startTime := time.Now()

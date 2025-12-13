@@ -2,6 +2,7 @@ package driver
 
 import (
 	"context"
+	"strings"
 	"time"
 )
 
@@ -256,12 +257,67 @@ func NewUsageError(message string) *UsageError {
 	return &UsageError{Message: message}
 }
 
-// Neo4jError represents a Neo4j server error
-type Neo4jError struct {
+// DatabaseError represents a database server error (Neo4j, Memgraph, etc.)
+type DatabaseError struct {
 	Code    string
 	Message string
 }
 
-func (e *Neo4jError) Error() string {
-	return e.Code + ": " + e.Message
+func (e *DatabaseError) Error() string {
+	if e.Code != "" {
+		return e.Code + ": " + e.Message
+	}
+	return e.Message
+}
+
+// IsRetriable returns true if the error is transient and can be retried.
+func (e *DatabaseError) IsRetriable() bool {
+	return e.IsTransient() || e.IsClusterError() || e.IsConflict()
+}
+
+// IsTransient returns true for transient/temporary errors.
+func (e *DatabaseError) IsTransient() bool {
+	code := strings.ToLower(e.Code)
+	msg := strings.ToLower(e.Message)
+
+	return strings.Contains(code, "transient") ||
+		strings.Contains(msg, "timeout") ||
+		strings.Contains(msg, "unavailable") ||
+		strings.Contains(msg, "temporarily")
+}
+
+// IsClusterError returns true for cluster/replication errors.
+func (e *DatabaseError) IsClusterError() bool {
+	code := strings.ToLower(e.Code)
+	msg := strings.ToLower(e.Message)
+
+	return strings.Contains(code, "notaleader") ||
+		strings.Contains(code, "readonly") ||
+		strings.Contains(msg, "not a leader") ||
+		strings.Contains(msg, "read-only") ||
+		strings.Contains(msg, "read only")
+}
+
+// IsConflict returns true for transaction conflict/deadlock errors.
+func (e *DatabaseError) IsConflict() bool {
+	code := strings.ToLower(e.Code)
+	msg := strings.ToLower(e.Message)
+
+	return strings.Contains(code, "deadlock") ||
+		strings.Contains(code, "conflict") ||
+		strings.Contains(msg, "deadlock") ||
+		strings.Contains(msg, "conflicting transactions") ||
+		strings.Contains(msg, "lock timeout") ||
+		strings.Contains(msg, "serialization failure")
+}
+
+// IsAuthError returns true for authentication/authorization errors.
+func (e *DatabaseError) IsAuthError() bool {
+	code := strings.ToLower(e.Code)
+	msg := strings.ToLower(e.Message)
+
+	return strings.Contains(code, "security") ||
+		strings.Contains(code, "auth") ||
+		strings.Contains(msg, "authentication") ||
+		strings.Contains(msg, "unauthorized")
 }

@@ -54,7 +54,7 @@ func (sc *streamingConnectionWrapper) sendRun(ctx context.Context) error {
 
 	if response.Signature() == messaging.FailureSignature {
 		if failure, ok := response.(*messaging.Failure); ok {
-			return &Neo4jError{
+			return &DatabaseError{
 				Code:    failure.Code(),
 				Message: failure.Message(),
 			}
@@ -189,7 +189,7 @@ func (sc *streamingConnectionWrapper) PullNext(ctx context.Context, batchSize in
 	case messaging.FailureSignature:
 		sc.exhausted = true
 		if failure, ok := response.(*messaging.Failure); ok {
-			err := &Neo4jError{
+			err := &DatabaseError{
 				Code:    failure.Code(),
 				Message: failure.Message(),
 			}

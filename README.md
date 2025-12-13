@@ -358,6 +358,32 @@ config := &driver.Config{
 }
 ```
 
+### Automatic Retry with Exponential Backoff
+```go
+// Default retry policy: 5 attempts, exponential backoff, full jitter
+cols, rows, err := dr.RunWithRetry(ctx, nil,
+    "CREATE (u:User {id: $id})",
+    map[string]interface{}{"id": userID}, nil)
+
+// Custom retry policy
+policy := &driver.RetryPolicy{
+    MaxAttempts:  10,
+    BaseDelay:    100 * time.Millisecond,
+    MaxDelay:     30 * time.Second,
+    Multiplier:   2.0,
+    JitterFactor: 1.0, // Full jitter prevents thundering herd
+    OnRetry: func(ctx driver.RetryContext) {
+        log.Printf("Retry %d after %v: %v", ctx.Attempt, ctx.NextDelay, ctx.Error)
+    },
+}
+cols, rows, err := dr.RunWithRetry(ctx, policy, query, params, nil)
+
+// Retries automatically for:
+// - Transient errors (timeouts, temporary unavailability)
+// - Transaction conflicts (deadlocks, serialization failures)
+// - Cluster errors (not a leader, read-only)
+```
+
 ##  **Advanced Use Cases**
 
 ### Real-time Fraud Detection
