@@ -3,12 +3,17 @@ package boltutil
 import (
 	"errors"
 	"fmt"
-	"github.com/seuros/gopher-cypher/src/bolt/messaging"
-	"github.com/seuros/gopher-cypher/src/connection_url_resolver"
 	"io"
 	"net"
 	"runtime"
+	"time"
+
+	"github.com/seuros/gopher-cypher/src/bolt/messaging"
+	"github.com/seuros/gopher-cypher/src/connection_url_resolver"
 )
+
+// DefaultTimeout is the default timeout for Bolt protocol operations
+const DefaultTimeout = 30 * time.Second
 
 // LibraryVersion is injected at build time via -ldflags
 var LibraryVersion = "dev"
@@ -28,6 +33,13 @@ func CheckVersion(conn net.Conn) error {
 		0, 0, 0, 0,
 		0, 0, 0, 0,
 	}
+
+	// Set deadline for handshake
+	if err := conn.SetDeadline(time.Now().Add(DefaultTimeout)); err != nil {
+		return fmt.Errorf("failed to set deadline: %w", err)
+	}
+	defer conn.SetDeadline(time.Time{})
+
 	if _, err := conn.Write(magic); err != nil {
 		return err
 	}
@@ -58,7 +70,7 @@ func SendHello(conn net.Conn) error {
 	version := getLibraryVersion()
 	userAgent := fmt.Sprintf("gopher-cypher::Bolt/%s (Go/%s)", version, runtime.Version()[2:]) // Remove "go" prefix
 	platform := fmt.Sprintf("go %s [%s-%s]", runtime.Version()[2:], runtime.GOARCH, runtime.GOOS)
-	
+
 	message := messaging.NewHello(map[string]interface{}{
 		"user_agent":                     userAgent,
 		"notifications_minimum_severity": "WARNING",

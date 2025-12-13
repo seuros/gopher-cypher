@@ -5,10 +5,15 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"github.com/seuros/gopher-cypher/src/bolt/packstream"
 	"io"
 	"net"
+	"time"
+
+	"github.com/seuros/gopher-cypher/src/bolt/packstream"
 )
+
+// DefaultReadTimeout is the default timeout for reading from the connection
+const DefaultReadTimeout = 30 * time.Second
 
 func sendRequest(signature byte, fields []interface{}, conn net.Conn) (Message, error) {
 	messageBytes, err := packMessage(signature, fields)
@@ -136,13 +141,21 @@ func ReadChunkedMessage(conn net.Conn) (Message, error) {
 
 func readChunkedMessage(conn net.Conn) (Message, error) {
 	var messageData bytes.Buffer
+
+	// Set read deadline to prevent hanging
+	if err := conn.SetReadDeadline(time.Now().Add(DefaultReadTimeout)); err != nil {
+		return nil, fmt.Errorf("failed to set read deadline: %w", err)
+	}
+	// Clear deadline when done
+	defer conn.SetReadDeadline(time.Time{})
+
 	for {
 		sizeBytes := make([]byte, 2)
 		if _, err := io.ReadFull(conn, sizeBytes); err != nil {
 			if err == io.EOF {
 				return nil, errors.New("Connection closed while reading chunk header")
 			}
-			return nil, errors.New(fmt.Sprintf("Error reading chunk header: %v", err))
+			return nil, fmt.Errorf("error reading chunk header: %w", err)
 		}
 
 		chunkSize := binary.BigEndian.Uint16(sizeBytes)
