@@ -292,6 +292,13 @@ cyq fmt src/queries/user-management.cypher
 # Explore AST structure
 cyq inspect complex-query.cypher
 
+# Execute queries against Neo4j or Memgraph
+export CYQ_URL="memgraph://memgraph:activecypher@localhost:7687"
+cyq ping
+cyq run queries/example.cypher
+cyq run --query "RETURN 1 AS n" --format json
+cyq run --query "RETURN $n AS n" --params '{"n": 1}'
+
 # Start Language Server for IDE integration
 cyq lsp
 ```
