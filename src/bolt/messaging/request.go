@@ -68,6 +68,19 @@ func sendRequestData(signature byte, fields []interface{}, conn net.Conn) ([]str
 		return nil, nil, err
 	}
 
+	// Check for FAILURE response first
+	if messageIn.Signature() == FailureSignature {
+		if failure, ok := messageIn.(*Failure); ok {
+			return nil, nil, fmt.Errorf("query failed: [%s] %s", failure.Code(), failure.Message())
+		}
+		return nil, nil, errors.New("query execution failed")
+	}
+
+	// Check for unexpected response types
+	if messageIn.Signature() != SuccessSignature {
+		return nil, nil, fmt.Errorf("unexpected response type: 0x%02X", messageIn.Signature())
+	}
+
 	fieldsW := messageIn.Fields()
 	if len(fieldsW) != 1 {
 		return nil, nil, errors.New("invalid fields length")
@@ -119,8 +132,22 @@ func sendRequestData(signature byte, fields []interface{}, conn net.Conn) ([]str
 			break
 		}
 
+		// Check for FAILURE in PULL response
+		if pullResponse.Signature() == FailureSignature {
+			if failure, ok := pullResponse.(*Failure); ok {
+				return nil, nil, fmt.Errorf("pull failed: [%s] %s", failure.Code(), failure.Message())
+			}
+			return nil, nil, errors.New("pull failed")
+		}
+
+		// SUCCESS with no more records
 		pullFields := pullResponse.Fields()
 		if len(pullFields) == 0 {
+			return strFieldsCols, allData, nil
+		}
+
+		// Check if this is a SUCCESS (end of results) vs RECORD
+		if pullResponse.Signature() == SuccessSignature {
 			return strFieldsCols, allData, nil
 		}
 
