@@ -53,12 +53,12 @@ func (l *EnhancedConsoleLogger) colorForLevel(level LogLevel) string {
 func (l *EnhancedConsoleLogger) shouldLog(level LogLevel, category LogCategory) bool {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
-	
+
 	// Check category-specific level first
 	if categoryLevel, exists := l.CategoryLevels[category]; exists {
 		return level >= categoryLevel
 	}
-	
+
 	// Fall back to global level
 	return level >= l.Level
 }
@@ -67,14 +67,14 @@ func (l *EnhancedConsoleLogger) log(level LogLevel, category LogCategory, msg st
 	if !l.shouldLog(level, category) {
 		return
 	}
-	
+
 	var parts []string
-	
+
 	// Timestamp
 	if l.IncludeTimestamp {
 		parts = append(parts, time.Now().Format("2006-01-02 15:04:05.000"))
 	}
-	
+
 	// Level with color
 	color := l.colorForLevel(level)
 	reset := ColorReset
@@ -82,23 +82,23 @@ func (l *EnhancedConsoleLogger) log(level LogLevel, category LogCategory, msg st
 		reset = ""
 	}
 	parts = append(parts, fmt.Sprintf("%s%-5s%s", color, level.String(), reset))
-	
+
 	// Category
 	parts = append(parts, fmt.Sprintf("[%s]", string(category)))
-	
+
 	// Source location
 	if l.IncludeSource {
 		if _, file, line, ok := runtime.Caller(3); ok {
 			// Extract just the filename
-			parts := strings.Split(file, "/")
-			filename := parts[len(parts)-1]
+			pathParts := strings.Split(file, "/")
+			filename := pathParts[len(pathParts)-1]
 			parts = append(parts, fmt.Sprintf("%s:%d", filename, line))
 		}
 	}
-	
+
 	// Message
 	parts = append(parts, msg)
-	
+
 	// Key-value pairs
 	if len(keysAndValues) > 0 {
 		kvPairs := formatKeyValues(keysAndValues)
@@ -106,9 +106,9 @@ func (l *EnhancedConsoleLogger) log(level LogLevel, category LogCategory, msg st
 			parts = append(parts, kvPairs)
 		}
 	}
-	
+
 	output := strings.Join(parts, " ") + "\n"
-	l.Output.Write([]byte(output))
+	_, _ = l.Output.Write([]byte(output))
 }
 
 func (l *EnhancedConsoleLogger) Debug(msg string, keysAndValues ...interface{}) {
@@ -147,7 +147,7 @@ func (l *EnhancedConsoleLogger) IsLevelEnabled(level LogLevel) bool {
 func (l *EnhancedConsoleLogger) IsCategoryEnabled(category LogCategory) bool {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
-	
+
 	if categoryLevel, exists := l.CategoryLevels[category]; exists {
 		return categoryLevel != LogLevelOff
 	}
@@ -157,7 +157,7 @@ func (l *EnhancedConsoleLogger) IsCategoryEnabled(category LogCategory) bool {
 func (l *EnhancedConsoleLogger) SetCategoryLevel(category LogCategory, level LogLevel) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	
+
 	if l.CategoryLevels == nil {
 		l.CategoryLevels = make(map[LogCategory]LogLevel)
 	}
@@ -178,7 +178,7 @@ type EnhancedStructuredLogger struct {
 func (l *EnhancedStructuredLogger) shouldLog(level LogLevel, category LogCategory) bool {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
-	
+
 	if categoryLevel, exists := l.CategoryLevels[category]; exists {
 		return level >= categoryLevel
 	}
@@ -189,18 +189,18 @@ func (l *EnhancedStructuredLogger) log(level LogLevel, category LogCategory, msg
 	if !l.shouldLog(level, category) {
 		return
 	}
-	
+
 	entry := LogEntry{
 		Level:    level,
 		Category: category,
 		Message:  msg,
 		Fields:   make(map[string]interface{}),
 	}
-	
+
 	if l.IncludeTimestamp {
 		entry.Timestamp = time.Now()
 	}
-	
+
 	if l.IncludeSource {
 		if _, file, line, ok := runtime.Caller(3); ok {
 			parts := strings.Split(file, "/")
@@ -208,12 +208,12 @@ func (l *EnhancedStructuredLogger) log(level LogLevel, category LogCategory, msg
 			entry.Source = fmt.Sprintf("%s:%d", filename, line)
 		}
 	}
-	
+
 	// Parse key-value pairs into fields
 	if len(keysAndValues) > 0 {
 		entry.Fields = parseKeyValues(keysAndValues)
 	}
-	
+
 	l.LogStructured(entry)
 }
 
@@ -221,11 +221,11 @@ func (l *EnhancedStructuredLogger) LogStructured(entry LogEntry) {
 	data, err := json.Marshal(entry)
 	if err != nil {
 		// Fallback to simple output if JSON marshaling fails
-		l.Output.Write([]byte(fmt.Sprintf("ERROR: Failed to marshal log entry: %v\n", err)))
+		_, _ = fmt.Fprintf(l.Output, "ERROR: Failed to marshal log entry: %v\n", err)
 		return
 	}
-	
-	l.Output.Write(append(data, '\n'))
+
+	_, _ = l.Output.Write(append(data, '\n'))
 }
 
 func (l *EnhancedStructuredLogger) Debug(msg string, keysAndValues ...interface{}) {
@@ -263,7 +263,7 @@ func (l *EnhancedStructuredLogger) IsLevelEnabled(level LogLevel) bool {
 func (l *EnhancedStructuredLogger) IsCategoryEnabled(category LogCategory) bool {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
-	
+
 	if categoryLevel, exists := l.CategoryLevels[category]; exists {
 		return categoryLevel != LogLevelOff
 	}
@@ -273,7 +273,7 @@ func (l *EnhancedStructuredLogger) IsCategoryEnabled(category LogCategory) bool 
 func (l *EnhancedStructuredLogger) SetCategoryLevel(category LogCategory, level LogLevel) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	
+
 	if l.CategoryLevels == nil {
 		l.CategoryLevels = make(map[LogCategory]LogLevel)
 	}
@@ -316,28 +316,28 @@ func (l *DedicatedBoltLogger) log(level LogLevel, prefix string, msg string, key
 	if level < l.Level {
 		return
 	}
-	
+
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	
+
 	timestamp := time.Now().Format("15:04:05.000")
 	kvPairs := formatKeyValues(keysAndValues)
-	
+
 	var output string
 	if len(kvPairs) > 0 {
 		output = fmt.Sprintf("%s [%s] %s %s %s\n", timestamp, prefix, level.String(), msg, kvPairs)
 	} else {
 		output = fmt.Sprintf("%s [%s] %s %s\n", timestamp, prefix, level.String(), msg)
 	}
-	
-	l.Output.Write([]byte(output))
+
+	_, _ = l.Output.Write([]byte(output))
 }
 
 func (l *DedicatedBoltLogger) LogBoltMessage(direction string, messageType string, fields []interface{}) {
 	if !l.IsDebugEnabled() {
 		return
 	}
-	
+
 	fieldsStr := "[]"
 	if len(fields) > 0 {
 		fieldsBytes, err := json.Marshal(fields)
@@ -345,8 +345,8 @@ func (l *DedicatedBoltLogger) LogBoltMessage(direction string, messageType strin
 			fieldsStr = string(fieldsBytes)
 		}
 	}
-	
-	l.Debug(fmt.Sprintf("Bolt %s: %s", direction, messageType), 
+
+	l.Debug(fmt.Sprintf("Bolt %s: %s", direction, messageType),
 		"fields", fieldsStr,
 		"field_count", len(fields))
 }
@@ -371,7 +371,7 @@ func formatKeyValues(keysAndValues []interface{}) string {
 	if len(keysAndValues) == 0 {
 		return ""
 	}
-	
+
 	var parts []string
 	for i := 0; i < len(keysAndValues); i += 2 {
 		if i+1 < len(keysAndValues) {
@@ -380,7 +380,7 @@ func formatKeyValues(keysAndValues []interface{}) string {
 			parts = append(parts, fmt.Sprintf("%s=%s", key, value))
 		}
 	}
-	
+
 	if len(parts) > 0 {
 		return "{" + strings.Join(parts, ", ") + "}"
 	}
@@ -389,14 +389,14 @@ func formatKeyValues(keysAndValues []interface{}) string {
 
 func parseKeyValues(keysAndValues []interface{}) map[string]interface{} {
 	fields := make(map[string]interface{})
-	
+
 	for i := 0; i < len(keysAndValues); i += 2 {
 		if i+1 < len(keysAndValues) {
 			key := fmt.Sprintf("%v", keysAndValues[i])
 			fields[key] = keysAndValues[i+1]
 		}
 	}
-	
+
 	return fields
 }
 
@@ -407,32 +407,32 @@ type LoggerAdapter struct {
 	InfoFunc  func(msg string, args ...interface{})
 	WarnFunc  func(msg string, args ...interface{})
 	ErrorFunc func(msg string, args ...interface{})
-	
+
 	DebugEnabled bool
 	InfoEnabled  bool
 }
 
 func (a *LoggerAdapter) Debug(msg string, keysAndValues ...interface{}) {
 	if a.DebugFunc != nil && a.DebugEnabled {
-		a.DebugFunc(msg+" "+formatKeyValues(keysAndValues))
+		a.DebugFunc(msg + " " + formatKeyValues(keysAndValues))
 	}
 }
 
 func (a *LoggerAdapter) Info(msg string, keysAndValues ...interface{}) {
 	if a.InfoFunc != nil && a.InfoEnabled {
-		a.InfoFunc(msg+" "+formatKeyValues(keysAndValues))
+		a.InfoFunc(msg + " " + formatKeyValues(keysAndValues))
 	}
 }
 
 func (a *LoggerAdapter) Warn(msg string, keysAndValues ...interface{}) {
 	if a.WarnFunc != nil {
-		a.WarnFunc(msg+" "+formatKeyValues(keysAndValues))
+		a.WarnFunc(msg + " " + formatKeyValues(keysAndValues))
 	}
 }
 
 func (a *LoggerAdapter) Error(msg string, keysAndValues ...interface{}) {
 	if a.ErrorFunc != nil {
-		a.ErrorFunc(msg+" "+formatKeyValues(keysAndValues))
+		a.ErrorFunc(msg + " " + formatKeyValues(keysAndValues))
 	}
 }
 

@@ -97,6 +97,7 @@ func NewDriverWithConfig(urlString string, config *Config) (Driver, error) {
 			d.logger.Debug("Opening connection", "address", address, "ssl", urlCfg.SSL, "ssc", urlCfg.SSC)
 		}
 
+		var rawConn net.Conn
 		if urlCfg.SSL || urlCfg.SSC {
 			// Build TLS config from driver configuration
 			tlsCfg := config.TLS.buildTLSConfig(urlCfg.Host)
@@ -108,11 +109,18 @@ func NewDriverWithConfig(urlString string, config *Config) (Driver, error) {
 			}
 
 			d.logger.Debug("Establishing TLS connection", "address", address, "server_name", tlsCfg.ServerName)
-			return tls.Dial("tcp", address, tlsCfg)
+			rawConn, err = tls.Dial("tcp", address, tlsCfg)
+		} else {
+			d.logger.Debug("Establishing plain TCP connection", "address", address)
+			rawConn, err = net.Dial("tcp", address)
 		}
 
-		d.logger.Debug("Establishing plain TCP connection", "address", address)
-		return net.Dial("tcp", address)
+		if err != nil {
+			return nil, err
+		}
+
+		// Wrap connection with state tracking
+		return newPooledConn(rawConn), nil
 	}
 
 	d.netPool, err = netpool.New(dialFn)

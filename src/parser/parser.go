@@ -71,7 +71,7 @@ func convertToAST(query *Query) (*cypher.Query, error) {
 				pattern += ":" + clause.Match.Pattern.Label
 			}
 			pattern += ")"
-			
+
 			matchNode := &cypher.MatchNode{Pattern: pattern}
 			q.AddClause(cypher.NewClauseAdapter(matchNode))
 		}
@@ -82,7 +82,7 @@ func convertToAST(query *Query) (*cypher.Query, error) {
 				pattern += ":" + clause.Merge.Pattern.Label
 			}
 			pattern += ")"
-			
+
 			mergeNode := &cypher.MergeNode{Pattern: pattern}
 			q.AddClause(cypher.NewClauseAdapter(mergeNode))
 		}
@@ -108,7 +108,7 @@ func convertToAST(query *Query) (*cypher.Query, error) {
 				}
 				expression = elements
 			}
-			
+
 			unwindNode := &cypher.UnwindNode{
 				Expression: expression,
 				AliasName:  clause.Unwind.Alias,
@@ -148,7 +148,7 @@ func convertToAST(query *Query) (*cypher.Query, error) {
 				} else if assignment.Value.Param != nil {
 					value = *assignment.Value.Param // Removed "$"
 				}
-				
+
 				property := fmt.Sprintf("%s.%s", assignment.PropertyAccess.Variable, assignment.PropertyAccess.Property)
 				assignments[i] = &cypher.PropertyAssignment{
 					Property: property,
@@ -173,12 +173,12 @@ func convertToAST(query *Query) (*cypher.Query, error) {
 			items := make([]interface{}, len(clause.Return.Items))
 			for i, item := range clause.Return.Items {
 				var baseItem interface{}
-				
+
 				if item.Expression != nil {
 					expr := item.Expression
 					if expr.MathExpression != nil {
 						leftVal := convertMathTerm(expr.MathExpression.Left)
-						
+
 						// Check if this is a full math expression or just a single term
 						if expr.MathExpression.Operator != "" && expr.MathExpression.Right != nil {
 							rightVal := convertMathTerm(expr.MathExpression.Right)
@@ -203,7 +203,7 @@ func convertToAST(query *Query) (*cypher.Query, error) {
 								args[j] = *arg.Param // Removed "$"
 							}
 						}
-						
+
 						baseItem = &cypher.FunctionCallExpr{
 							Name:      expr.FunctionCall.Name,
 							Arguments: args,
@@ -215,7 +215,7 @@ func convertToAST(query *Query) (*cypher.Query, error) {
 						}
 					}
 				}
-				
+
 				// Handle aliases if present
 				if item.Alias != nil && baseItem != nil {
 					items[i] = &cypher.AliasExpr{

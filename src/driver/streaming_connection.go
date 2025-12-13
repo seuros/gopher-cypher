@@ -2,7 +2,6 @@ package driver
 
 import (
 	"context"
-	"net"
 	"time"
 
 	"github.com/seuros/gopher-cypher/src/bolt/messaging"
@@ -11,7 +10,7 @@ import (
 
 // streamingConnectionWrapper implements StreamConnection interface
 type streamingConnectionWrapper struct {
-	conn          net.Conn
+	conn          *pooledConn
 	netPool       *netpool.Netpool
 	query         string
 	params        map[string]interface{}
@@ -48,7 +47,7 @@ func (sc *streamingConnectionWrapper) sendRun(ctx context.Context) error {
 	}
 
 	// Read SUCCESS response with field metadata
-	response, err := messaging.ReadChunkedMessage(sc.conn)
+	response, err := messaging.ReadChunkedMessage(sc.conn.Conn)
 	if err != nil {
 		return err
 	}
@@ -110,6 +109,9 @@ func (sc *streamingConnectionWrapper) PullNext(ctx context.Context, batchSize in
 		return nil, nil, nil
 	}
 
+	// Touch connection to update last used time
+	sc.conn.touch()
+
 	// Send PULL message
 	pullMsg := messaging.NewPull(map[string]interface{}{
 		"n":   batchSize,
@@ -127,7 +129,7 @@ func (sc *streamingConnectionWrapper) PullNext(ctx context.Context, batchSize in
 	}
 
 	// Read response
-	response, err := messaging.ReadChunkedMessage(sc.conn)
+	response, err := messaging.ReadChunkedMessage(sc.conn.Conn)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -235,7 +237,7 @@ func (sc *streamingConnectionWrapper) Close() error {
 	sc.closed = true
 	sc.exhausted = true
 
-	// Return connection to pool
+	// Return connection to pool (pooledConn satisfies net.Conn)
 	sc.netPool.Put(sc.conn, nil)
 
 	return nil

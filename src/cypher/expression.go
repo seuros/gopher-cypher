@@ -92,13 +92,13 @@ type MathExpr struct {
 func (e *MathExpr) BuildCypher(q *Query) string {
 	leftStr := ""
 	rightStr := ""
-	
+
 	if leftParam := q.RegisterParameter(e.Left); leftParam != "" {
 		leftStr = "$" + leftParam
 	}
 	if rightParam := q.RegisterParameter(e.Right); rightParam != "" {
 		rightStr = "$" + rightParam
 	}
-	
+
 	return leftStr + " " + e.Operator + " " + rightStr
 }

@@ -55,7 +55,7 @@ type List struct {
 }
 
 type ReturnClause struct {
-	Items      []*ReturnItem `"RETURN" @@ ("," @@)*`
+	Items []*ReturnItem `"RETURN" @@ ("," @@)*`
 }
 
 type ReturnItem struct {
@@ -107,8 +107,8 @@ type MergeClause struct {
 }
 
 type UnwindClause struct {
-	Expression *Value  `"UNWIND" @@`
-	Alias      string  `"AS" @Ident`
+	Expression *Value `"UNWIND" @@`
+	Alias      string `"AS" @Ident`
 }
 
 type SetClause struct {

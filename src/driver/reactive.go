@@ -162,7 +162,6 @@ type reactiveResult struct {
 	config      *ReactiveConfig
 	operators   []reactiveOperator
 	mu          sync.RWMutex
-	cancelled   bool
 	logger      Logger
 	observables *observabilityInstruments
 }
@@ -263,7 +262,7 @@ func (r *reactiveResult) Records(ctx context.Context) <-chan RecordEvent {
 			go func(operator reactiveOperator, input <-chan RecordEvent, out chan<- RecordEvent) {
 				defer wg.Done()
 				defer close(out)
-				operator.apply(ctx, input, out)
+				_ = operator.apply(ctx, input, out)
 				// Drain remaining input on context cancellation to unblock upstream
 				for range input {
 				}

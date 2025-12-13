@@ -17,7 +17,7 @@ make build           # Builds cyq binary with proper version
 ./cyq version        # Shows: cyq version 0.2.0
 ```
 
-### Development Build  
+### Development Build
 ```bash
 go run cmd/cyq/main.go version   # Shows: cyq version dev
 ```

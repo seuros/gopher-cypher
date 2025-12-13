@@ -33,7 +33,7 @@ func TestRunQuery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
-	defer dr.Close()
+	defer func() { _ = dr.Close() }()
 
 	ctx := context.Background()
 	cols, rows, err := dr.Run(ctx, "RETURN 1 AS n", map[string]interface{}{}, map[string]interface{}{})

@@ -24,8 +24,9 @@ func getLibraryVersion() string {
 }
 
 // CheckVersion negotiates the Bolt protocol version with the server and
-// validates the returned version.
-func CheckVersion(conn net.Conn) error {
+// validates the returned version. Returns the negotiated major and minor
+// version numbers on success.
+func CheckVersion(conn net.Conn) (major, minor byte, err error) {
 	magic := []byte{
 		0x60, 0x60, 0xB0, 0x17,
 		0, 0, 8, 5,
@@ -35,34 +36,38 @@ func CheckVersion(conn net.Conn) error {
 	}
 
 	// Set deadline for handshake
-	if err := conn.SetDeadline(time.Now().Add(DefaultTimeout)); err != nil {
-		return fmt.Errorf("failed to set deadline: %w", err)
+	if err = conn.SetDeadline(time.Now().Add(DefaultTimeout)); err != nil {
+		err = fmt.Errorf("failed to set deadline: %w", err)
+		return
 	}
 	defer conn.SetDeadline(time.Time{})
 
-	if _, err := conn.Write(magic); err != nil {
-		return err
+	if _, err = conn.Write(magic); err != nil {
+		return
 	}
 
 	buf := make([]byte, 4)
-	if _, err := io.ReadFull(conn, buf); err != nil {
-		return err
+	if _, err = io.ReadFull(conn, buf); err != nil {
+		return
 	}
 
-	major := buf[3]
-	minor := buf[2]
+	major = buf[3]
+	minor = buf[2]
 	if major == 80 && minor == 84 {
-		return errors.New("The server responded with an HTTP response. Please ensure you're not trying to connect to the HTTP endpoint. Note that HTTP typically uses port 7474, while the BOLT protocol uses port 7687.")
+		err = errors.New("The server responded with an HTTP response. Please ensure you're not trying to connect to the HTTP endpoint. Note that HTTP typically uses port 7474, while the BOLT protocol uses port 7687.")
+		return
 	}
 
 	if major != 5 {
-		return fmt.Errorf("Unsupported protocol version %d,%d", major, minor)
+		err = fmt.Errorf("Unsupported protocol version %d,%d", major, minor)
+		return
 	}
 	if minor != 8 && minor != 2 {
-		return fmt.Errorf("Unsupported protocol version %d,%d", major, minor)
+		err = fmt.Errorf("Unsupported protocol version %d,%d", major, minor)
+		return
 	}
 
-	return nil
+	return major, minor, nil
 }
 
 // SendHello performs the HELLO handshake with the server.

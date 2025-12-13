@@ -29,7 +29,7 @@ func (m *MockStreamConnection) GetKeys() ([]string, error) {
 
 func (m *MockStreamConnection) PullNext(ctx context.Context, batchSize int) (*Record, *ResultSummary, error) {
 	m.pullCount++
-	
+
 	if m.index >= len(m.records) {
 		// Return summary on exhaustion
 		if m.summary == nil {
@@ -40,7 +40,7 @@ func (m *MockStreamConnection) PullNext(ctx context.Context, batchSize int) (*Re
 		}
 		return nil, m.summary, nil
 	}
-	
+
 	record := m.records[m.index]
 	m.index++
 	return record, nil, nil
@@ -59,12 +59,12 @@ func TestStreamingResult_Next(t *testing.T) {
 		{"name": "Bob", "age": 25},
 		{"name": "Charlie", "age": 35},
 	}
-	
+
 	mockConn := NewMockStreamConnection(keys, records)
 	result := NewStreamingResult(mockConn, "MATCH (n) RETURN n.name, n.age", nil)
-	
+
 	ctx := context.Background()
-	
+
 	// Test Keys()
 	resultKeys, err := result.Keys()
 	if err != nil {
@@ -73,7 +73,7 @@ func TestStreamingResult_Next(t *testing.T) {
 	if len(resultKeys) != 2 || resultKeys[0] != "name" || resultKeys[1] != "age" {
 		t.Errorf("Expected keys [name, age], got %v", resultKeys)
 	}
-	
+
 	// Test iteration
 	count := 0
 	for result.Next(ctx) {
@@ -83,21 +83,21 @@ func TestStreamingResult_Next(t *testing.T) {
 			continue
 		}
 		count++
-		
+
 		name := (*record)["name"].(string)
 		age := (*record)["age"].(int)
-		
+
 		t.Logf("Record %d: name=%s, age=%d", count, name, age)
 	}
-	
+
 	if err := result.Err(); err != nil {
 		t.Errorf("Iteration failed with error: %v", err)
 	}
-	
+
 	if count != 3 {
 		t.Errorf("Expected 3 records, got %d", count)
 	}
-	
+
 	// Verify connection was accessed properly
 	if mockConn.pullCount != 4 { // 3 records + 1 final pull that returns summary
 		t.Errorf("Expected 4 pull operations, got %d", mockConn.pullCount)
@@ -111,28 +111,28 @@ func TestStreamingResult_Collect(t *testing.T) {
 		{"id": 1, "value": "first"},
 		{"id": 2, "value": "second"},
 	}
-	
+
 	mockConn := NewMockStreamConnection(keys, records)
 	result := NewStreamingResult(mockConn, "MATCH (n) RETURN n.id, n.value", nil)
-	
+
 	ctx := context.Background()
-	
+
 	// Test Collect()
 	collected, err := result.Collect(ctx)
 	if err != nil {
 		t.Fatalf("Collect() failed: %v", err)
 	}
-	
+
 	if len(collected) != 2 {
 		t.Errorf("Expected 2 collected records, got %d", len(collected))
 	}
-	
+
 	// Verify first record
 	first := *collected[0]
 	if first["id"] != 1 || first["value"] != "first" {
 		t.Errorf("First record incorrect: %v", first)
 	}
-	
+
 	// Verify second record
 	second := *collected[1]
 	if second["id"] != 2 || second["value"] != "second" {
@@ -146,17 +146,17 @@ func TestStreamingResult_Single(t *testing.T) {
 	records := []*Record{
 		{"result": "success"},
 	}
-	
+
 	mockConn := NewMockStreamConnection(keys, records)
 	result := NewStreamingResult(mockConn, "RETURN 'success' AS result", nil)
-	
+
 	ctx := context.Background()
-	
+
 	single, err := result.Single(ctx)
 	if err != nil {
 		t.Fatalf("Single() failed: %v", err)
 	}
-	
+
 	if (*single)["result"] != "success" {
 		t.Errorf("Single record incorrect: %v", *single)
 	}
@@ -166,17 +166,17 @@ func TestStreamingResult_Single_NoRecords(t *testing.T) {
 	// Test with no records
 	keys := []string{"result"}
 	records := []*Record{}
-	
+
 	mockConn := NewMockStreamConnection(keys, records)
 	result := NewStreamingResult(mockConn, "MATCH (n) WHERE FALSE RETURN n", nil)
-	
+
 	ctx := context.Background()
-	
+
 	_, err := result.Single(ctx)
 	if err == nil {
 		t.Error("Single() should fail with no records")
 	}
-	
+
 	if usageErr, ok := err.(*UsageError); !ok || usageErr.Message != "Result contains no records" {
 		t.Errorf("Expected 'Result contains no records' error, got: %v", err)
 	}
@@ -189,17 +189,17 @@ func TestStreamingResult_Single_MultipleRecords(t *testing.T) {
 		{"value": 1},
 		{"value": 2},
 	}
-	
+
 	mockConn := NewMockStreamConnection(keys, records)
 	result := NewStreamingResult(mockConn, "RETURN 1 AS value UNION RETURN 2 AS value", nil)
-	
+
 	ctx := context.Background()
-	
+
 	_, err := result.Single(ctx)
 	if err == nil {
 		t.Error("Single() should fail with multiple records")
 	}
-	
+
 	if usageErr, ok := err.(*UsageError); !ok || usageErr.Message != "Result contains more than one record" {
 		t.Errorf("Expected 'Result contains more than one record' error, got: %v", err)
 	}
@@ -213,43 +213,43 @@ func TestStreamingResult_Peek(t *testing.T) {
 		{"num": 2},
 		{"num": 3},
 	}
-	
+
 	mockConn := NewMockStreamConnection(keys, records)
 	result := NewStreamingResult(mockConn, "RETURN 1 AS num UNION RETURN 2 AS num UNION RETURN 3 AS num", nil)
-	
+
 	ctx := context.Background()
-	
+
 	// Peek at first record
 	hasPeek := result.Peek(ctx)
 	if !hasPeek {
 		t.Error("Peek() should return true for first record")
 	}
-	
+
 	var peekedRec *Record
 	hasPeekRecord := result.PeekRecord(ctx, &peekedRec)
 	if !hasPeekRecord {
 		t.Error("PeekRecord() should return true for first record")
 	}
-	
+
 	if (*peekedRec)["num"] != 1 {
 		t.Errorf("Peeked record should be 1, got %v", (*peekedRec)["num"])
 	}
-	
+
 	// Now advance with Next() - should get the same record
 	if !result.Next(ctx) {
 		t.Error("Next() should return true after peek")
 	}
-	
+
 	currentRec := result.Record()
 	if (*currentRec)["num"] != 1 {
 		t.Errorf("Current record should be 1 after peek, got %v", (*currentRec)["num"])
 	}
-	
+
 	// Continue with normal iteration
 	if !result.Next(ctx) {
 		t.Error("Next() should return true for second record")
 	}
-	
+
 	currentRec = result.Record()
 	if (*currentRec)["num"] != 2 {
 		t.Errorf("Second record should be 2, got %v", (*currentRec)["num"])

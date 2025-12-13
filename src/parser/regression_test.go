@@ -1,8 +1,8 @@
 package parser
 
 import (
-	"testing"
 	"github.com/stretchr/testify/require"
+	"testing"
 )
 
 // TestRegressionProtection ensures that parser coverage doesn't regress
@@ -21,7 +21,7 @@ func TestRegressionProtection(t *testing.T) {
 			query: "RETURN n",
 		},
 		{
-			name:  "Function call with no arguments", 
+			name:  "Function call with no arguments",
 			query: "RETURN count()",
 		},
 		{
@@ -48,7 +48,7 @@ func TestRegressionProtection(t *testing.T) {
 			query, err := parser.Parse(fixture.query)
 			require.NoError(t, err, "Regression detected: %s should parse successfully", fixture.name)
 			require.NotNil(t, query, "Parsed query should not be nil")
-			
+
 			// Verify the query can be built back to Cypher
 			cypherOutput, _ := query.BuildCypher()
 			require.NotEmpty(t, cypherOutput, "Query should generate non-empty Cypher output")
@@ -63,13 +63,13 @@ func TestKnownFailures(t *testing.T) {
 	require.NoError(t, err)
 
 	knownFailures := []struct {
-		name  string
-		query string
+		name   string
+		query  string
 		reason string
 	}{
 		{
 			name:   "Basic return of parameters",
-			query:  "RETURN $p1, $p2", 
+			query:  "RETURN $p1, $p2",
 			reason: "Multiple parameter returns not supported yet",
 		},
 		{
@@ -134,8 +134,8 @@ func TestSecurityValidation(t *testing.T) {
 	require.NoError(t, err)
 
 	securityTests := []struct {
-		name  string
-		query string
+		name          string
+		query         string
 		expectedError string
 	}{
 		{
@@ -144,7 +144,7 @@ func TestSecurityValidation(t *testing.T) {
 			expectedError: "multiple statements not allowed",
 		},
 		{
-			name:          "Single quotes blocked", 
+			name:          "Single quotes blocked",
 			query:         "RETURN 'malicious'",
 			expectedError: "single quotes not allowed",
 		},

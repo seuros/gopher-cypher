@@ -17,7 +17,7 @@ func newDriverOrSkip(t *testing.T, url string) Driver {
 	if err != nil {
 		t.Skip("database not available")
 	}
-	conn.Close()
+	_ = conn.Close()
 	dr, err := NewDriver(url)
 	if err != nil {
 		t.Fatalf("%v", err)
@@ -38,7 +38,7 @@ func newDriverOrSkipTLS(t *testing.T, url string) Driver {
 	if err != nil {
 		t.Skip("database not available or tls handshake failed")
 	}
-	conn.Close()
+	_ = conn.Close()
 	dr, err := NewDriver(url)
 	if err != nil {
 		t.Fatalf("%v", err)
@@ -48,7 +48,7 @@ func newDriverOrSkipTLS(t *testing.T, url string) Driver {
 
 func TestPingMemgraph(t *testing.T) {
 	dr := newDriverOrSkip(t, testutil.MemgraphURL())
-	defer dr.Close()
+	defer func() { _ = dr.Close() }()
 
 	if err := dr.Ping(); err != nil {
 		t.Fatalf("%v", err)
@@ -57,7 +57,7 @@ func TestPingMemgraph(t *testing.T) {
 
 func TestPingNeo4j(t *testing.T) {
 	dr := newDriverOrSkip(t, testutil.Neo4jURL())
-	defer dr.Close()
+	defer func() { _ = dr.Close() }()
 
 	if err := dr.Ping(); err != nil {
 		t.Fatalf("%v", err)
@@ -66,7 +66,7 @@ func TestPingNeo4j(t *testing.T) {
 
 func TestPingNeo4jSSL(t *testing.T) {
 	dr := newDriverOrSkipTLS(t, testutil.Neo4jSSLURL())
-	defer dr.Close()
+	defer func() { _ = dr.Close() }()
 
 	if err := dr.Ping(); err != nil {
 		t.Fatalf("%v", err)
@@ -75,7 +75,7 @@ func TestPingNeo4jSSL(t *testing.T) {
 
 func TestPingNeo4jSSC(t *testing.T) {
 	dr := newDriverOrSkipTLS(t, testutil.Neo4jSSCURL())
-	defer dr.Close()
+	defer func() { _ = dr.Close() }()
 
 	if err := dr.Ping(); err != nil {
 		t.Fatalf("%v", err)

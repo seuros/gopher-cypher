@@ -165,7 +165,7 @@ type LoggingConfig struct {
 	IncludeSource bool
 	// RequestIDEnabled enables request ID tracking
 	RequestIDEnabled bool
-	
+
 	// Specific feature flags for backward compatibility
 	// LogBoltMessages enables detailed Bolt protocol message logging
 	LogBoltMessages bool
@@ -258,12 +258,12 @@ func NewBoltTracingConfig(level LogLevel, output io.Writer) *LoggingConfig {
 // NoOpLogger is a logger that does nothing (default behavior)
 type NoOpLogger struct{}
 
-func (l *NoOpLogger) Debug(msg string, keysAndValues ...interface{})   {}
-func (l *NoOpLogger) Info(msg string, keysAndValues ...interface{})    {}
-func (l *NoOpLogger) Warn(msg string, keysAndValues ...interface{})    {}
-func (l *NoOpLogger) Error(msg string, keysAndValues ...interface{})   {}
-func (l *NoOpLogger) IsDebugEnabled() bool                             { return false }
-func (l *NoOpLogger) IsInfoEnabled() bool                              { return false }
+func (l *NoOpLogger) Debug(msg string, keysAndValues ...interface{}) {}
+func (l *NoOpLogger) Info(msg string, keysAndValues ...interface{})  {}
+func (l *NoOpLogger) Warn(msg string, keysAndValues ...interface{})  {}
+func (l *NoOpLogger) Error(msg string, keysAndValues ...interface{}) {}
+func (l *NoOpLogger) IsDebugEnabled() bool                           { return false }
+func (l *NoOpLogger) IsInfoEnabled() bool                            { return false }
 
 // ConsoleLogger logs to stdout/stderr with configurable level and formatting
 type ConsoleLogger struct {
@@ -318,10 +318,10 @@ func (c *ConsoleLogger) formatMessage(level LogLevel, msg string, keysAndValues 
 	c.mu.RLock()
 	timeFormat := c.timeFormat
 	c.mu.RUnlock()
-	
+
 	timestamp := time.Now().Format(timeFormat)
 	formatted := fmt.Sprintf("[%s] %s [gopher-cypher] %s", timestamp, level.String(), msg)
-	
+
 	// Append key-value pairs
 	if len(keysAndValues) > 0 {
 		var pairs []string
@@ -336,7 +336,7 @@ func (c *ConsoleLogger) formatMessage(level LogLevel, msg string, keysAndValues 
 			formatted += " | " + strings.Join(pairs, " ")
 		}
 	}
-	
+
 	return formatted
 }
 
@@ -344,7 +344,7 @@ func (c *ConsoleLogger) Debug(msg string, keysAndValues ...interface{}) {
 	c.mu.RLock()
 	level := c.level
 	c.mu.RUnlock()
-	
+
 	if level <= LogLevelDebug {
 		c.debugLog.Println(c.formatMessage(LogLevelDebug, msg, keysAndValues...))
 	}
@@ -354,7 +354,7 @@ func (c *ConsoleLogger) Info(msg string, keysAndValues ...interface{}) {
 	c.mu.RLock()
 	level := c.level
 	c.mu.RUnlock()
-	
+
 	if level <= LogLevelInfo {
 		c.infoLog.Println(c.formatMessage(LogLevelInfo, msg, keysAndValues...))
 	}
@@ -364,7 +364,7 @@ func (c *ConsoleLogger) Warn(msg string, keysAndValues ...interface{}) {
 	c.mu.RLock()
 	level := c.level
 	c.mu.RUnlock()
-	
+
 	if level <= LogLevelWarn {
 		c.warnLog.Println(c.formatMessage(LogLevelWarn, msg, keysAndValues...))
 	}
@@ -374,7 +374,7 @@ func (c *ConsoleLogger) Error(msg string, keysAndValues ...interface{}) {
 	c.mu.RLock()
 	level := c.level
 	c.mu.RUnlock()
-	
+
 	if level <= LogLevelError {
 		c.errorLog.Println(c.formatMessage(LogLevelError, msg, keysAndValues...))
 	}

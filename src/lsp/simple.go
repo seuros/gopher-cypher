@@ -2,8 +2,8 @@ package lsp
 
 import (
 	"bufio"
-	"errors"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -43,10 +43,10 @@ type InitializeResult struct {
 }
 
 type ServerCapabilities struct {
-	TextDocumentSync   int                `json:"textDocumentSync"`
-	HoverProvider      bool               `json:"hoverProvider"`
-	CompletionProvider *CompletionOptions `json:"completionProvider"`
-	DocumentFormattingProvider bool       `json:"documentFormattingProvider,omitempty"`
+	TextDocumentSync           int                `json:"textDocumentSync"`
+	HoverProvider              bool               `json:"hoverProvider"`
+	CompletionProvider         *CompletionOptions `json:"completionProvider"`
+	DocumentFormattingProvider bool               `json:"documentFormattingProvider,omitempty"`
 }
 
 type CompletionOptions struct {
@@ -119,8 +119,8 @@ func (s *SimpleServer) handleMessage(msg *Message) *Message {
 			ID:      msg.ID,
 			Result: InitializeResult{
 				Capabilities: ServerCapabilities{
-					TextDocumentSync: 1,
-					HoverProvider:    true,
+					TextDocumentSync:           1,
+					HoverProvider:              true,
 					DocumentFormattingProvider: true,
 					CompletionProvider: &CompletionOptions{
 						TriggerCharacters: []string{":", ".", "(", " "},
@@ -334,17 +334,17 @@ func (s *SimpleServer) handleHover(id interface{}, params interface{}) *Message 
 	upper := strings.ToUpper(word)
 
 	docs := map[string]string{
-		"MATCH":   "Matches a simple node pattern.",
+		"MATCH":    "Matches a simple node pattern.",
 		"OPTIONAL": "Optional match; returns nulls when no match.",
-		"MERGE":   "Matches or creates a node pattern.",
-		"UNWIND":  "Expands a list into rows.",
-		"WHERE":   "Filters results using a comparison.",
-		"RETURN":  "Projects values from the match.",
-		"SET":     "Updates properties.",
-		"REMOVE":  "Removes properties.",
-		"SKIP":    "Skips the first N rows.",
-		"LIMIT":   "Limits results to N rows.",
-		"AS":      "Aliases a return item.",
+		"MERGE":    "Matches or creates a node pattern.",
+		"UNWIND":   "Expands a list into rows.",
+		"WHERE":    "Filters results using a comparison.",
+		"RETURN":   "Projects values from the match.",
+		"SET":      "Updates properties.",
+		"REMOVE":   "Removes properties.",
+		"SKIP":     "Skips the first N rows.",
+		"LIMIT":    "Limits results to N rows.",
+		"AS":       "Aliases a return item.",
 	}
 
 	value := "**Cypher**\n\n"

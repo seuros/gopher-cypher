@@ -8,7 +8,8 @@ import (
 )
 
 func checkVersion(conn net.Conn) error {
-	return boltutil.CheckVersion(conn)
+	_, _, err := boltutil.CheckVersion(conn)
+	return err
 }
 
 func sendHello(conn net.Conn) error {

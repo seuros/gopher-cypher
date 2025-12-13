@@ -10,14 +10,14 @@ import (
 
 func TestDefaultObservabilityConfig(t *testing.T) {
 	config := DefaultObservabilityConfig()
-	
+
 	if !config.EnableTracing {
 		t.Error("Tracing should be enabled by default")
 	}
 	if !config.EnableMetrics {
 		t.Error("Metrics should be enabled by default")
 	}
-	
+
 	// Check that default attributes are set
 	foundDriver := false
 	foundSystem := false
@@ -29,7 +29,7 @@ func TestDefaultObservabilityConfig(t *testing.T) {
 			foundSystem = true
 		}
 	}
-	
+
 	if !foundDriver {
 		t.Error("Default tracing attributes should include db.driver")
 	}
@@ -40,7 +40,7 @@ func TestDefaultObservabilityConfig(t *testing.T) {
 
 func TestObservabilityInstrumentation(t *testing.T) {
 	instruments := initObservability()
-	
+
 	if instruments.tracer == nil {
 		t.Error("Tracer should be initialized")
 	}
@@ -72,7 +72,7 @@ func TestInferQueryType(t *testing.T) {
 		{"WITH 1 as x RETURN x", "READ"},
 		{"UNKNOWN QUERY", "UNKNOWN"},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.query, func(t *testing.T) {
 			result := inferQueryType(tt.query)
@@ -94,19 +94,19 @@ func TestResultSummary(t *testing.T) {
 		QueryType:        "read",
 		Notifications:    []Notification{},
 	}
-	
+
 	if summary.QueryText != "RETURN 1 AS n" {
 		t.Errorf("Expected query text 'RETURN 1 AS n', got %s", summary.QueryText)
 	}
-	
+
 	if summary.ExecutionTime != 100*time.Millisecond {
 		t.Errorf("Expected execution time 100ms, got %v", summary.ExecutionTime)
 	}
-	
+
 	if summary.RecordsConsumed != 1 {
 		t.Errorf("Expected 1 record consumed, got %d", summary.RecordsConsumed)
 	}
-	
+
 	if summary.QueryType != "read" {
 		t.Errorf("Expected query type 'read', got %s", summary.QueryType)
 	}
@@ -123,14 +123,14 @@ func TestObservabilityConfigCustomization(t *testing.T) {
 			attribute.String("environment", "test"),
 		},
 	}
-	
+
 	if config.EnableTracing {
 		t.Error("Tracing should be disabled")
 	}
 	if !config.EnableMetrics {
 		t.Error("Metrics should be enabled")
 	}
-	
+
 	foundCustom := false
 	for _, attr := range config.TracingAttributes {
 		if attr.Key == "custom.attr" && attr.Value.AsString() == "value" {
@@ -147,7 +147,7 @@ func TestDriverWithObservability(t *testing.T) {
 	config := DefaultConfig()
 	config.Observability.EnableTracing = true
 	config.Observability.EnableMetrics = true
-	
+
 	// This will fail to connect, but we're testing config handling
 	_, err := NewDriverWithConfig("memgraph://test:test@localhost:7688", config)
 	if err == nil {
@@ -162,7 +162,7 @@ func TestObservabilityDisabled(t *testing.T) {
 	config := DefaultConfig()
 	config.Observability.EnableTracing = false
 	config.Observability.EnableMetrics = false
-	
+
 	_, err := NewDriverWithConfig("memgraph://test:test@localhost:7688", config)
 	if err == nil {
 		t.Log("Driver creation succeeded with observability disabled")
@@ -174,29 +174,29 @@ func TestObservabilityDisabled(t *testing.T) {
 func TestSpanContextHandling(t *testing.T) {
 	instruments := initObservability()
 	config := DefaultObservabilityConfig()
-	
+
 	ctx := context.Background()
 	query := "RETURN 1"
 	params := map[string]interface{}{}
-	
+
 	// Test starting a span
 	newCtx, spanCtx := instruments.startQuerySpan(ctx, query, params, config)
-	
+
 	if newCtx == ctx && config.EnableTracing {
 		t.Error("Context should be different when tracing is enabled")
 	}
-	
+
 	if spanCtx == nil {
 		t.Error("Span context should not be nil")
 	}
-	
+
 	// Test finishing a span
 	summary := &ResultSummary{
 		QueryType:       "read",
 		RecordsConsumed: 1,
 		Notifications:   []Notification{},
 	}
-	
+
 	// This should not panic
 	instruments.finishQuerySpan(spanCtx, summary, nil, config)
 }

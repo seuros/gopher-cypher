@@ -31,7 +31,7 @@ func containsUnsafePatterns(s string) bool {
 	}
 
 	for _, pattern := range unsafePatterns {
-		if regexp.MustCompile(`(?i)`+pattern).MatchString(s) {
+		if regexp.MustCompile(`(?i)` + pattern).MatchString(s) {
 			return true
 		}
 	}

@@ -39,10 +39,10 @@ func TestRoundtrip(t *testing.T) {
 			// Convert back to Cypher
 			rebuilt, _ := parsed1.BuildCypher()
 
-			// Note: We can't do full roundtrip yet because generated Cypher 
+			// Note: We can't do full roundtrip yet because generated Cypher
 			// contains parameters ($p1.age) that our grammar doesn't support.
 			// For now, we test that parsing succeeds and generates output.
-			
+
 			if rebuilt == "" {
 				t.Errorf("generated Cypher is empty")
 			}
@@ -123,7 +123,7 @@ func TestParserBasicValidation(t *testing.T) {
 			valid: true,
 		},
 		{
-			name:  "set property", 
+			name:  "set property",
 			input: `MATCH (n) SET n.age = 25`,
 			valid: true,
 		},

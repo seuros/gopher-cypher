@@ -13,25 +13,25 @@ func (r *reactiveResult) ToSlice(ctx context.Context) ([]*Record, error) {
 	var records []*Record
 	var err error
 	var wg sync.WaitGroup
-	
+
 	wg.Add(1)
-	
+
 	subscriber := &sliceSubscriber{
 		records: &records,
 		err:     &err,
 		wg:      &wg,
 	}
-	
+
 	if subscribeErr := r.Subscribe(ctx, subscriber); subscribeErr != nil {
 		return nil, subscribeErr
 	}
-	
+
 	wg.Wait()
-	
+
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return records, nil
 }
 
@@ -59,32 +59,32 @@ func (r *reactiveResult) First(ctx context.Context) (*Record, error) {
 	var record *Record
 	var err error
 	var wg sync.WaitGroup
-	
+
 	wg.Add(1)
-	
+
 	subscriber := &firstSubscriber{
 		record: &record,
 		err:    &err,
 		wg:     &wg,
 	}
-	
+
 	// Take only the first record
 	firstResult := r.Take(1)
-	
+
 	if subscribeErr := firstResult.Subscribe(ctx, subscriber); subscribeErr != nil {
 		return nil, subscribeErr
 	}
-	
+
 	wg.Wait()
-	
+
 	if err != nil {
 		return nil, err
 	}
-	
+
 	if record == nil {
 		return nil, NewUsageError("Result contains no records")
 	}
-	
+
 	return record, nil
 }
 
@@ -119,25 +119,25 @@ func (r *reactiveResult) Count(ctx context.Context) (int64, error) {
 	var count int64
 	var err error
 	var wg sync.WaitGroup
-	
+
 	wg.Add(1)
-	
+
 	subscriber := &countSubscriber{
 		count: &count,
 		err:   &err,
 		wg:    &wg,
 	}
-	
+
 	if subscribeErr := r.Subscribe(ctx, subscriber); subscribeErr != nil {
 		return 0, subscribeErr
 	}
-	
+
 	wg.Wait()
-	
+
 	if err != nil {
 		return 0, err
 	}
-	
+
 	return count, nil
 }
 
@@ -263,7 +263,7 @@ func (bp *BackpressureHandler) Handle(ctx context.Context, event RecordEvent, ou
 		case <-ctx.Done():
 			return ctx.Err()
 		}
-		
+
 	case BackpressureDrop:
 		select {
 		case output <- event:
@@ -275,14 +275,14 @@ func (bp *BackpressureHandler) Handle(ctx context.Context, event RecordEvent, ou
 			bp.dropped++
 			bp.mu.Unlock()
 		}
-		
+
 	case BackpressureBlock:
 		select {
 		case output <- event:
 		case <-ctx.Done():
 			return ctx.Err()
 		}
-		
+
 	case BackpressureLatest:
 		select {
 		case output <- event:
@@ -306,7 +306,7 @@ func (bp *BackpressureHandler) Handle(ctx context.Context, event RecordEvent, ou
 			}
 		}
 	}
-	
+
 	return nil
 }
 
@@ -377,5 +377,13 @@ func (m *ReactiveMetrics) RecordError() {
 func (m *ReactiveMetrics) GetSnapshot() ReactiveMetrics {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return *m
+	return ReactiveMetrics{
+		RecordsProcessed:   m.RecordsProcessed,
+		RecordsDropped:     m.RecordsDropped,
+		AverageLatency:     m.AverageLatency,
+		ThroughputPerSec:   m.ThroughputPerSec,
+		BackpressureEvents: m.BackpressureEvents,
+		ErrorCount:         m.ErrorCount,
+		OperatorCount:      m.OperatorCount,
+	}
 }

@@ -9,7 +9,7 @@ import (
 
 func TestDefaultConfig(t *testing.T) {
 	config := DefaultConfig()
-	
+
 	// Test TLS defaults
 	if config.TLS == nil {
 		t.Fatal("TLS config should not be nil")
@@ -17,7 +17,7 @@ func TestDefaultConfig(t *testing.T) {
 	if config.TLS.MinVersion != tls.VersionTLS12 {
 		t.Errorf("Expected TLS 1.2 minimum, got %d", config.TLS.MinVersion)
 	}
-	
+
 	// Test pool defaults
 	if config.ConnectionPool == nil {
 		t.Fatal("ConnectionPool config should not be nil")
@@ -103,7 +103,7 @@ func TestTLSConfigBuild(t *testing.T) {
 			},
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := tt.tlsConfig.buildTLSConfig(tt.serverName)
@@ -117,13 +117,13 @@ func TestTLSConfigWithCertificates(t *testing.T) {
 	cert := tls.Certificate{
 		// Empty cert for testing - in real usage this would be loaded from files
 	}
-	
+
 	tlsConfig := &TLSConfig{
 		ClientCertificates: []tls.Certificate{cert},
 	}
-	
+
 	builtConfig := tlsConfig.buildTLSConfig("localhost")
-	
+
 	if len(builtConfig.Certificates) != 1 {
 		t.Errorf("Expected 1 certificate, got %d", len(builtConfig.Certificates))
 	}
@@ -132,13 +132,13 @@ func TestTLSConfigWithCertificates(t *testing.T) {
 func TestTLSConfigWithCustomRootCAs(t *testing.T) {
 	// Create a custom certificate pool
 	pool := x509.NewCertPool()
-	
+
 	tlsConfig := &TLSConfig{
 		RootCAs: pool,
 	}
-	
+
 	builtConfig := tlsConfig.buildTLSConfig("localhost")
-	
+
 	if builtConfig.RootCAs != pool {
 		t.Error("Expected custom root CA pool to be used")
 	}
@@ -153,7 +153,7 @@ func TestNewDriverWithConfig(t *testing.T) {
 	} else {
 		t.Logf("Expected connection error: %v", err)
 	}
-	
+
 	// Test with custom config
 	config := &Config{
 		TLS: &TLSConfig{
@@ -165,7 +165,7 @@ func TestNewDriverWithConfig(t *testing.T) {
 			MaxIdleTime:    15 * time.Minute,
 		},
 	}
-	
+
 	_, err = NewDriverWithConfig("memgraph://test:test@localhost:7688", config)
 	if err == nil {
 		t.Log("Driver creation with custom config succeeded")

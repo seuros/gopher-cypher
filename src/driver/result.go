@@ -14,58 +14,58 @@ type Record map[string]interface{}
 type Result interface {
 	// Keys returns the column names available in the result set
 	Keys() ([]string, error)
-	
+
 	// Next advances to the next record and returns true if a record is available.
 	// Returns false when no more records or an error occurs.
 	Next(ctx context.Context) bool
-	
+
 	// NextRecord advances to the next record and sets the record parameter.
 	// Returns true if a record is available, false otherwise.
 	NextRecord(ctx context.Context, record **Record) bool
-	
+
 	// Record returns the current record. May be nil if Next() hasn't been called
 	// or returned false.
 	Record() *Record
-	
+
 	// Peek returns true if there is a record after the current one without advancing.
 	// Useful for lookahead without consuming the record.
 	Peek(ctx context.Context) bool
-	
+
 	// PeekRecord returns the next record without advancing the cursor.
 	PeekRecord(ctx context.Context, record **Record) bool
-	
+
 	// Err returns any error that occurred during iteration
 	Err() error
-	
+
 	// Collect fetches all remaining records and returns them as a slice.
 	// This consumes the entire result stream.
 	Collect(ctx context.Context) ([]*Record, error)
-	
+
 	// Single returns exactly one record from the stream.
 	// Returns error if zero or more than one record remains.
 	Single(ctx context.Context) (*Record, error)
-	
+
 	// Consume discards all remaining records and returns the result summary.
 	// This closes the result stream.
 	Consume(ctx context.Context) (*ResultSummary, error)
-	
+
 	// IsOpen returns true if the result stream is still available for reading
 	IsOpen() bool
 }
 
 // StreamingResult implements the Result interface with lazy loading
 type StreamingResult struct {
-	conn         StreamConnection
-	keys         []string
-	currentRec   *Record
-	peekedRec    *Record
-	hasPeeked    bool
-	summary      *ResultSummary
-	err          error
-	closed       bool
-	query        string
-	params       map[string]interface{}
-	startTime    time.Time
+	conn       StreamConnection
+	keys       []string
+	currentRec *Record
+	peekedRec  *Record
+	hasPeeked  bool
+	summary    *ResultSummary
+	err        error
+	closed     bool
+	query      string
+	params     map[string]interface{}
+	startTime  time.Time
 }
 
 // StreamConnection defines the interface for streaming connections
@@ -102,7 +102,7 @@ func (r *StreamingResult) Next(ctx context.Context) bool {
 	if r.err != nil || r.closed {
 		return false
 	}
-	
+
 	// If we have a peeked record, use it
 	if r.hasPeeked {
 		r.currentRec = r.peekedRec
@@ -110,14 +110,14 @@ func (r *StreamingResult) Next(ctx context.Context) bool {
 		r.hasPeeked = false
 		return r.currentRec != nil
 	}
-	
+
 	// Fetch next record
 	r.currentRec, r.summary, r.err = r.conn.PullNext(ctx, 1)
 	if r.summary != nil {
 		r.closed = true
 		return false
 	}
-	
+
 	return r.currentRec != nil && r.err == nil
 }
 
@@ -137,7 +137,7 @@ func (r *StreamingResult) Peek(ctx context.Context) bool {
 	if r.err != nil || r.closed {
 		return false
 	}
-	
+
 	if !r.hasPeeked {
 		r.peekedRec, r.summary, r.err = r.conn.PullNext(ctx, 1)
 		r.hasPeeked = true
@@ -145,7 +145,7 @@ func (r *StreamingResult) Peek(ctx context.Context) bool {
 			r.closed = true
 		}
 	}
-	
+
 	return r.peekedRec != nil && r.err == nil
 }
 
@@ -165,7 +165,7 @@ func (r *StreamingResult) Collect(ctx context.Context) ([]*Record, error) {
 	if r.err != nil {
 		return nil, r.err
 	}
-	
+
 	var records []*Record
 	for r.Next(ctx) {
 		// Create a copy of the current record to avoid issues with reuse
@@ -175,11 +175,11 @@ func (r *StreamingResult) Collect(ctx context.Context) ([]*Record, error) {
 		}
 		records = append(records, &recordCopy)
 	}
-	
+
 	if r.err != nil {
 		return nil, r.err
 	}
-	
+
 	return records, nil
 }
 
@@ -190,20 +190,20 @@ func (r *StreamingResult) Single(ctx context.Context) (*Record, error) {
 		}
 		return nil, NewUsageError("Result contains no records")
 	}
-	
+
 	single := r.currentRec
-	
+
 	// Check if there's another record
 	if r.Next(ctx) {
 		// Consume the rest to clean up
-		r.Consume(ctx)
+		_, _ = r.Consume(ctx)
 		return nil, NewUsageError("Result contains more than one record")
 	}
-	
+
 	if r.err != nil {
 		return nil, r.err
 	}
-	
+
 	return single, nil
 }
 
@@ -211,20 +211,20 @@ func (r *StreamingResult) Consume(ctx context.Context) (*ResultSummary, error) {
 	if r.err != nil {
 		return nil, r.err
 	}
-	
+
 	// Drain remaining records
 	for r.Next(ctx) {
 		// Just consume them
 	}
-	
+
 	if r.err != nil {
 		return nil, r.err
 	}
-	
+
 	// Close the connection
-	r.conn.Close()
+	_ = r.conn.Close()
 	r.closed = true
-	
+
 	// Build summary if we don't have one
 	if r.summary == nil {
 		r.summary = &ResultSummary{
@@ -235,7 +235,7 @@ func (r *StreamingResult) Consume(ctx context.Context) (*ResultSummary, error) {
 			RecordsAvailable: 0, // Unknown in streaming mode
 		}
 	}
-	
+
 	return r.summary, nil
 }
 
