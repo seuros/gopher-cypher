@@ -8,7 +8,9 @@ func (d *driver) Ping() error {
 		d.logger.Error("Ping failed: unable to get connection", "error", err)
 		return err
 	}
-	defer d.netPool.Put(conn, err)
+	defer func() {
+		d.netPool.Put(conn, err)
+	}()
 
 	// Use ensureAuthenticated for consistent connection handling
 	_, err = d.ensureAuthenticated(conn)

@@ -124,50 +124,54 @@ func sendRequestData(signature byte, fields []interface{}, conn net.Conn) ([]str
 		"n":   -1,
 		"qid": -1,
 	})
+	// The server can send multiple RECORD messages in response to a single PULL.
+	// Read until the terminating SUCCESS/FAILURE for this PULL so the connection
+	// remains in a clean state for subsequent queries.
+	pullResponse, err := sendRequest(pull.Signature(), pull.Fields(), conn)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	for {
-		var pullResponse Message
-		pullResponse, err = sendRequest(pull.Signature(), pull.Fields(), conn)
-		if err != nil {
-			break
-		}
-
-		// Check for FAILURE in PULL response
-		if pullResponse.Signature() == FailureSignature {
+		switch pullResponse.Signature() {
+		case FailureSignature:
 			if failure, ok := pullResponse.(*Failure); ok {
 				return nil, nil, fmt.Errorf("pull failed: [%s] %s", failure.Code(), failure.Message())
 			}
 			return nil, nil, errors.New("pull failed")
-		}
 
-		// SUCCESS with no more records
-		pullFields := pullResponse.Fields()
-		if len(pullFields) == 0 {
+		case SuccessSignature:
 			return strFieldsCols, allData, nil
-		}
 
-		// Check if this is a SUCCESS (end of results) vs RECORD
-		if pullResponse.Signature() == SuccessSignature {
-			return strFieldsCols, allData, nil
-		}
-
-		colsValues, isArray := pullFields[0].([]interface{})
-		if !isArray {
-			return strFieldsCols, allData, nil
-		}
-
-		row := make(map[string]interface{}, len(strFieldsCols))
-		for i, field := range strFieldsCols {
-			if i < len(colsValues) {
-				row[field] = colsValues[i]
-			} else {
-				row[field] = nil
+		case RecordSignature:
+			pullFields := pullResponse.Fields()
+			if len(pullFields) != 1 {
+				return nil, nil, errors.New("invalid record format")
 			}
-		}
-		allData = append(allData, row)
-	}
+			colsValues, ok := pullFields[0].([]interface{})
+			if !ok {
+				return nil, nil, errors.New("invalid record format: expected []interface{}")
+			}
 
-	return strFieldsCols, allData, nil
+			row := make(map[string]interface{}, len(strFieldsCols))
+			for i, field := range strFieldsCols {
+				if i < len(colsValues) {
+					row[field] = colsValues[i]
+				} else {
+					row[field] = nil
+				}
+			}
+			allData = append(allData, row)
+
+		default:
+			return nil, nil, fmt.Errorf("unexpected pull response type: 0x%02X", pullResponse.Signature())
+		}
+
+		pullResponse, err = readChunkedMessage(conn)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
 }
 
 // PackMessage exports the packMessage function for use by streaming connections

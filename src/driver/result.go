@@ -69,6 +69,14 @@ type StreamingResult struct {
 	startTime  time.Time
 }
 
+func (r *StreamingResult) close() {
+	if r.closed {
+		return
+	}
+	r.closed = true
+	_ = r.conn.Close()
+}
+
 // StreamConnection defines the interface for streaming connections
 type StreamConnection interface {
 	// PullNext fetches the next record from the stream
@@ -95,6 +103,9 @@ func (r *StreamingResult) Keys() ([]string, error) {
 	}
 	if r.keys == nil {
 		r.keys, r.err = r.conn.GetKeys()
+		if r.err != nil {
+			r.close()
+		}
 	}
 	return r.keys, r.err
 }
@@ -114,8 +125,8 @@ func (r *StreamingResult) Next(ctx context.Context) bool {
 
 	// Fetch next record
 	r.currentRec, r.summary, r.err = r.conn.PullNext(ctx, 1)
-	if r.summary != nil {
-		r.closed = true
+	if r.err != nil || r.summary != nil {
+		r.close()
 		return false
 	}
 
@@ -142,8 +153,8 @@ func (r *StreamingResult) Peek(ctx context.Context) bool {
 	if !r.hasPeeked {
 		r.peekedRec, r.summary, r.err = r.conn.PullNext(ctx, 1)
 		r.hasPeeked = true
-		if r.summary != nil {
-			r.closed = true
+		if r.err != nil || r.summary != nil {
+			r.close()
 		}
 	}
 
@@ -209,22 +220,13 @@ func (r *StreamingResult) Single(ctx context.Context) (*Record, error) {
 }
 
 func (r *StreamingResult) Consume(ctx context.Context) (*ResultSummary, error) {
-	if r.err != nil {
-		return nil, r.err
-	}
-
 	// Drain remaining records
 	for r.Next(ctx) {
 		// Just consume them
 	}
 
-	if r.err != nil {
-		return nil, r.err
-	}
-
-	// Close the connection
-	_ = r.conn.Close()
-	r.closed = true
+	// Ensure connection is released even if iteration ended with an error.
+	r.close()
 
 	// Build summary if we don't have one
 	if r.summary == nil {
@@ -235,6 +237,10 @@ func (r *StreamingResult) Consume(ctx context.Context) (*ResultSummary, error) {
 			RecordsConsumed:  0, // We don't track this in streaming mode
 			RecordsAvailable: 0, // Unknown in streaming mode
 		}
+	}
+
+	if r.err != nil {
+		return r.summary, r.err
 	}
 
 	return r.summary, nil

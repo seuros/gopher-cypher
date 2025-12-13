@@ -5,6 +5,7 @@ package driver
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"net"
 
@@ -59,6 +60,20 @@ func NewDriver(urlString string) (Driver, error) {
 func NewDriverWithConfig(urlString string, config *Config) (Driver, error) {
 	if config == nil {
 		config = DefaultConfig()
+	}
+	// Ensure sub-configs are always initialized so callers can pass partial configs.
+	defaults := DefaultConfig()
+	if config.TLS == nil {
+		config.TLS = defaults.TLS
+	}
+	if config.ConnectionPool == nil {
+		config.ConnectionPool = defaults.ConnectionPool
+	}
+	if config.Observability == nil {
+		config.Observability = defaults.Observability
+	}
+	if config.Logging == nil {
+		config.Logging = defaults.Logging
 	}
 	d := driver{
 		config: config,
@@ -123,7 +138,28 @@ func NewDriverWithConfig(urlString string, config *Config) (Driver, error) {
 		return newPooledConn(rawConn), nil
 	}
 
-	d.netPool, err = netpool.New(dialFn)
+	var poolOpts []netpool.Opt
+	if d.config != nil && d.config.ConnectionPool != nil {
+		maxConnections := int32(d.config.ConnectionPool.MaxConnections)
+		if maxConnections <= 0 {
+			maxConnections = 1
+		}
+
+		// netpool supports a minimum pool size, but official Neo4j drivers create
+		// connections on demand (no "min"). Keep it at 0 and rely on Ping() to
+		// validate connectivity.
+		minConnections := int32(0)
+		if minConnections > maxConnections {
+			minConnections = maxConnections
+		}
+
+		poolOpts = append(poolOpts,
+			netpool.WithMaxPool(maxConnections),
+			netpool.WithMinPool(minConnections),
+		)
+	}
+
+	d.netPool, err = netpool.New(dialFn, poolOpts...)
 	if err != nil {
 		d.logger.Error("Failed to create connection pool", "error", err)
 		return nil, err
@@ -144,7 +180,20 @@ func NewDriverWithConfig(urlString string, config *Config) (Driver, error) {
 // Close shuts down the driver's connection pool.
 func (d *driver) Close() error {
 	d.logger.Info("Closing driver")
-	d.netPool.Close()
+	if d.netPool == nil {
+		d.logger.Debug("Connection pool closed")
+		return nil
+	}
+
+	// Best-effort close of idle pooled connections. The upstream netpool.Close()
+	// implementation is unsafe when the pool is empty, so avoid calling it.
+	for d.netPool.Len() > 0 {
+		conn, err := d.netPool.Get()
+		if err != nil {
+			break
+		}
+		d.netPool.Put(conn, errors.New("driver closed"))
+	}
 	d.logger.Debug("Connection pool closed")
 	return nil
 }

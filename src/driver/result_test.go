@@ -2,6 +2,7 @@ package driver
 
 import (
 	"context"
+	"errors"
 	"testing"
 )
 
@@ -47,6 +48,43 @@ func (m *MockStreamConnection) PullNext(ctx context.Context, batchSize int) (*Re
 }
 
 func (m *MockStreamConnection) Close() error {
+	m.closed = true
+	return nil
+}
+
+type ErrStreamConnection struct {
+	keys   []string
+	err    error
+	closed bool
+}
+
+func (m *ErrStreamConnection) GetKeys() ([]string, error) {
+	return m.keys, nil
+}
+
+func (m *ErrStreamConnection) PullNext(ctx context.Context, batchSize int) (*Record, *ResultSummary, error) {
+	return nil, nil, m.err
+}
+
+func (m *ErrStreamConnection) Close() error {
+	m.closed = true
+	return nil
+}
+
+type KeysErrStreamConnection struct {
+	err    error
+	closed bool
+}
+
+func (m *KeysErrStreamConnection) GetKeys() ([]string, error) {
+	return nil, m.err
+}
+
+func (m *KeysErrStreamConnection) PullNext(ctx context.Context, batchSize int) (*Record, *ResultSummary, error) {
+	return nil, nil, errors.New("unexpected PullNext call")
+}
+
+func (m *KeysErrStreamConnection) Close() error {
 	m.closed = true
 	return nil
 }
@@ -104,6 +142,49 @@ func TestStreamingResult_Next(t *testing.T) {
 	}
 }
 
+func TestStreamingResult_Next_ClosesConnectionOnError(t *testing.T) {
+	mockConn := &ErrStreamConnection{
+		keys: []string{"x"},
+		err:  errors.New("boom"),
+	}
+	result := NewStreamingResult(mockConn, "RETURN 1 AS x", nil)
+
+	ctx := context.Background()
+	if result.Next(ctx) {
+		t.Fatal("Next() should return false on error")
+	}
+
+	if err := result.Err(); err == nil || err.Error() != "boom" {
+		t.Fatalf("Expected error 'boom', got %v", err)
+	}
+
+	if !mockConn.closed {
+		t.Error("Expected connection to be closed on error")
+	}
+}
+
+func TestStreamingResult_Consume_ClosesConnectionOnError(t *testing.T) {
+	mockConn := &ErrStreamConnection{
+		keys: []string{"x"},
+		err:  errors.New("boom"),
+	}
+	result := NewStreamingResult(mockConn, "RETURN 1 AS x", nil)
+
+	ctx := context.Background()
+	_ = result.Next(ctx)
+
+	summary, err := result.Consume(ctx)
+	if err == nil || err.Error() != "boom" {
+		t.Fatalf("Expected Consume() error 'boom', got %v", err)
+	}
+	if summary == nil {
+		t.Fatal("Expected non-nil summary even on error")
+	}
+	if !mockConn.closed {
+		t.Error("Expected connection to be closed after Consume() on error")
+	}
+}
+
 func TestStreamingResult_Collect(t *testing.T) {
 	// Setup test data
 	keys := []string{"id", "value"}
@@ -138,6 +219,10 @@ func TestStreamingResult_Collect(t *testing.T) {
 	if second["id"] != 2 || second["value"] != "second" {
 		t.Errorf("Second record incorrect: %v", second)
 	}
+
+	if !mockConn.closed {
+		t.Error("Expected connection to be closed after Collect()")
+	}
 }
 
 func TestStreamingResult_Single(t *testing.T) {
@@ -160,6 +245,10 @@ func TestStreamingResult_Single(t *testing.T) {
 	if (*single)["result"] != "success" {
 		t.Errorf("Single record incorrect: %v", *single)
 	}
+
+	if !mockConn.closed {
+		t.Error("Expected connection to be closed after Single()")
+	}
 }
 
 func TestStreamingResult_Single_NoRecords(t *testing.T) {
@@ -179,6 +268,10 @@ func TestStreamingResult_Single_NoRecords(t *testing.T) {
 
 	if usageErr, ok := err.(*UsageError); !ok || usageErr.Message != "Result contains no records" {
 		t.Errorf("Expected 'Result contains no records' error, got: %v", err)
+	}
+
+	if !mockConn.closed {
+		t.Error("Expected connection to be closed after Single() with no records")
 	}
 }
 
@@ -202,6 +295,10 @@ func TestStreamingResult_Single_MultipleRecords(t *testing.T) {
 
 	if usageErr, ok := err.(*UsageError); !ok || usageErr.Message != "Result contains more than one record" {
 		t.Errorf("Expected 'Result contains more than one record' error, got: %v", err)
+	}
+
+	if !mockConn.closed {
+		t.Error("Expected connection to be closed after Single() with multiple records")
 	}
 }
 
@@ -253,5 +350,18 @@ func TestStreamingResult_Peek(t *testing.T) {
 	currentRec = result.Record()
 	if (*currentRec)["num"] != 2 {
 		t.Errorf("Second record should be 2, got %v", (*currentRec)["num"])
+	}
+}
+
+func TestStreamingResult_Keys_ClosesConnectionOnError(t *testing.T) {
+	mockConn := &KeysErrStreamConnection{err: errors.New("keys failed")}
+	result := NewStreamingResult(mockConn, "RETURN 1", nil)
+
+	_, err := result.Keys()
+	if err == nil || err.Error() != "keys failed" {
+		t.Fatalf("Expected Keys() error 'keys failed', got %v", err)
+	}
+	if !mockConn.closed {
+		t.Error("Expected connection to be closed when Keys() fails")
 	}
 }

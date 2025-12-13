@@ -25,6 +25,8 @@ type streamingConnectionWrapper struct {
 	spanCtx       *spanContext
 	summary       *ResultSummary
 	startTime     time.Time
+	lastErr       error
+	pending       []*Record
 }
 
 func (sc *streamingConnectionWrapper) sendRun(ctx context.Context) error {
@@ -38,32 +40,41 @@ func (sc *streamingConnectionWrapper) sendRun(ctx context.Context) error {
 	// Pack and send RUN message
 	messageBytes, err := messaging.PackMessage(runMessage.Signature(), runMessage.Fields())
 	if err != nil {
+		sc.lastErr = err
 		return err
 	}
 
 	err = sc.writeChunkedMessage(messageBytes)
 	if err != nil {
+		sc.lastErr = err
 		return err
 	}
 
 	// Read SUCCESS response with field metadata
 	response, err := messaging.ReadChunkedMessage(sc.conn.Conn)
 	if err != nil {
+		sc.lastErr = err
 		return err
 	}
 
 	if response.Signature() == messaging.FailureSignature {
 		if failure, ok := response.(*messaging.Failure); ok {
-			return &DatabaseError{
+			dbErr := &DatabaseError{
 				Code:    failure.Code(),
 				Message: failure.Message(),
 			}
+			sc.lastErr = dbErr
+			return dbErr
 		}
-		return NewUsageError("Query execution failed")
+		usageErr := NewUsageError("Query execution failed")
+		sc.lastErr = usageErr
+		return usageErr
 	}
 
 	if response.Signature() != messaging.SuccessSignature {
-		return NewUsageError("Unexpected response to RUN message")
+		usageErr := NewUsageError("Unexpected response to RUN message")
+		sc.lastErr = usageErr
+		return usageErr
 	}
 
 	// Extract keys from SUCCESS response
@@ -91,7 +102,9 @@ func (sc *streamingConnectionWrapper) sendRun(ctx context.Context) error {
 	}
 
 	if !sc.hasKeys {
-		return NewUsageError("Failed to extract field names from RUN response")
+		usageErr := NewUsageError("Failed to extract field names from RUN response")
+		sc.lastErr = usageErr
+		return usageErr
 	}
 
 	return nil
@@ -109,6 +122,17 @@ func (sc *streamingConnectionWrapper) PullNext(ctx context.Context, batchSize in
 		return nil, nil, nil
 	}
 
+	// Serve buffered records first (from a previous PULL response).
+	if len(sc.pending) > 0 {
+		record := sc.pending[0]
+		sc.pending = sc.pending[1:]
+		return record, nil, nil
+	}
+
+	if batchSize <= 0 {
+		batchSize = 1
+	}
+
 	// Touch connection to update last used time
 	sc.conn.touch()
 
@@ -120,91 +144,127 @@ func (sc *streamingConnectionWrapper) PullNext(ctx context.Context, batchSize in
 
 	messageBytes, err := messaging.PackMessage(pullMsg.Signature(), pullMsg.Fields())
 	if err != nil {
+		sc.lastErr = err
 		return nil, nil, err
 	}
 
 	err = sc.writeChunkedMessage(messageBytes)
 	if err != nil {
+		sc.lastErr = err
 		return nil, nil, err
 	}
 
-	// Read response
-	response, err := messaging.ReadChunkedMessage(sc.conn.Conn)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	switch response.Signature() {
-	case messaging.RecordSignature:
-		// Extract record data
-		fields := response.Fields()
-		if len(fields) > 0 {
-			if values, ok := fields[0].([]interface{}); ok {
-				record := make(Record)
-				for i, key := range sc.keys {
-					if i < len(values) {
-						record[key] = values[i]
-					}
-				}
-				return &record, nil, nil
-			}
-		}
-		return nil, nil, NewUsageError("Invalid RECORD format")
-
-	case messaging.SuccessSignature:
-		sc.exhausted = true
-
-		// Extract summary information
-		fields := response.Fields()
-		if len(fields) > 0 {
-			if metadata, ok := fields[0].(map[string]interface{}); ok {
-				// Update summary with final statistics
-				if stats, exists := metadata["stats"]; exists {
-					sc.summary.updateFromStats(stats)
-				}
-				if bookmark, exists := metadata["bookmark"]; exists {
-					if bookmarkStr, ok := bookmark.(string); ok {
-						sc.summary.Bookmark = bookmarkStr
-					} else if sc.logger != nil {
-						sc.logger.Warn("Bookmark is not a string", "type", bookmark)
-					}
-				}
-			}
-		}
-
-		sc.summary.ExecutionTime = time.Since(sc.startTime)
-
-		// Log completion
-		if sc.config.Logging != nil && sc.config.Logging.LogQueryTiming {
-			sc.logger.Info("Streaming query completed", "duration", sc.summary.ExecutionTime, "query_type", sc.summary.QueryType)
-		}
-
-		// Finish observability span
-		if sc.observability != nil && sc.config.Observability != nil {
-			sc.observability.finishQuerySpan(sc.spanCtx, sc.summary, nil, sc.config.Observability)
-		}
-
-		return nil, sc.summary, nil
-
-	case messaging.FailureSignature:
-		sc.exhausted = true
-		if failure, ok := response.(*messaging.Failure); ok {
-			err := &DatabaseError{
-				Code:    failure.Code(),
-				Message: failure.Message(),
-			}
-
-			// Finish observability span with error
-			if sc.observability != nil && sc.config.Observability != nil {
-				sc.observability.finishQuerySpan(sc.spanCtx, sc.summary, err, sc.config.Observability)
-			}
-
+	// A single PULL can yield multiple RECORD messages followed by a terminating
+	// SUCCESS/FAILURE. Read until the terminal message to keep the connection in
+	// a consistent state for subsequent PULLs.
+	for {
+		response, err := messaging.ReadChunkedMessage(sc.conn.Conn)
+		if err != nil {
+			sc.lastErr = err
 			return nil, nil, err
 		}
-		return nil, nil, NewUsageError("Query execution failed")
 
-	default:
-		return nil, nil, NewUsageError("Unexpected response from server")
+		switch response.Signature() {
+		case messaging.RecordSignature:
+			fields := response.Fields()
+			if len(fields) != 1 {
+				usageErr := NewUsageError("Invalid RECORD format")
+				sc.lastErr = usageErr
+				return nil, nil, usageErr
+			}
+			values, ok := fields[0].([]interface{})
+			if !ok {
+				usageErr := NewUsageError("Invalid RECORD format")
+				sc.lastErr = usageErr
+				return nil, nil, usageErr
+			}
+			record := make(Record)
+			for i, key := range sc.keys {
+				if i < len(values) {
+					record[key] = values[i]
+				}
+			}
+			sc.pending = append(sc.pending, &record)
+
+		case messaging.SuccessSignature:
+			// Determine whether more records remain (Bolt "has_more" metadata).
+			hasMore := false
+			fields := response.Fields()
+			if len(fields) > 0 {
+				if metadata, ok := fields[0].(map[string]interface{}); ok {
+					if v, ok := metadata["has_more"].(bool); ok {
+						hasMore = v
+					}
+
+					// Only the final SUCCESS (has_more == false) is treated as end-of-stream.
+					if !hasMore {
+						// Update summary with final statistics
+						if stats, exists := metadata["stats"]; exists {
+							sc.summary.updateFromStats(stats)
+						}
+						if bookmark, exists := metadata["bookmark"]; exists {
+							if bookmarkStr, ok := bookmark.(string); ok {
+								sc.summary.Bookmark = bookmarkStr
+							} else if sc.logger != nil {
+								sc.logger.Warn("Bookmark is not a string", "type", bookmark)
+							}
+						}
+					}
+				}
+			}
+
+			if !hasMore {
+				sc.exhausted = true
+
+				sc.summary.ExecutionTime = time.Since(sc.startTime)
+
+				// Log completion
+				if sc.config.Logging != nil && sc.config.Logging.LogQueryTiming {
+					sc.logger.Info("Streaming query completed", "duration", sc.summary.ExecutionTime, "query_type", sc.summary.QueryType)
+				}
+
+				// Finish observability span
+				if sc.observability != nil && sc.config.Observability != nil {
+					sc.observability.finishQuerySpan(sc.spanCtx, sc.summary, nil, sc.config.Observability)
+				}
+			}
+
+			// Return the first buffered record if we have one.
+			if len(sc.pending) > 0 {
+				record := sc.pending[0]
+				sc.pending = sc.pending[1:]
+				return record, nil, nil
+			}
+			if sc.exhausted {
+				return nil, sc.summary, nil
+			}
+			return nil, nil, nil
+
+		case messaging.FailureSignature:
+			sc.exhausted = true
+			if failure, ok := response.(*messaging.Failure); ok {
+				dbErr := &DatabaseError{
+					Code:    failure.Code(),
+					Message: failure.Message(),
+				}
+				sc.lastErr = dbErr
+
+				// Finish observability span with error
+				if sc.observability != nil && sc.config.Observability != nil {
+					sc.observability.finishQuerySpan(sc.spanCtx, sc.summary, dbErr, sc.config.Observability)
+				}
+
+				return nil, nil, dbErr
+			}
+			usageErr := NewUsageError("Query execution failed")
+			sc.lastErr = usageErr
+			return nil, nil, usageErr
+
+		default:
+			usageErr := NewUsageError("Unexpected response from server")
+			sc.lastErr = usageErr
+			return nil, nil, usageErr
+		}
 	}
 }
 
@@ -234,11 +294,18 @@ func (sc *streamingConnectionWrapper) Close() error {
 		return nil
 	}
 
+	wasExhausted := sc.exhausted
 	sc.closed = true
 	sc.exhausted = true
 
 	// Return connection to pool (pooledConn satisfies net.Conn)
-	sc.netPool.Put(sc.conn, nil)
+	putErr := sc.lastErr
+	if putErr == nil && !wasExhausted {
+		// If the stream is closed before being fully consumed, it's safer to discard the
+		// underlying connection to avoid reusing it in an unknown protocol state.
+		putErr = NewUsageError("Stream closed before being fully consumed")
+	}
+	sc.netPool.Put(sc.conn, putErr)
 
 	return nil
 }
