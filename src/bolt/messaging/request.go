@@ -72,11 +72,37 @@ func sendRequestData(signature byte, fields []interface{}, conn net.Conn) ([]str
 	if len(fieldsW) != 1 {
 		return nil, nil, errors.New("invalid fields length")
 	}
-	fieldsCols := fieldsW[0].(map[string]interface{})["fields"].([]interface{})
 
-	strFieldsCols := []string{}
+	// Safely extract fields with type checking
+	fieldsMap, ok := fieldsW[0].(map[string]interface{})
+	if !ok {
+		return nil, nil, errors.New("invalid response format: expected map")
+	}
+
+	fieldsVal, exists := fieldsMap["fields"]
+	if !exists {
+		return nil, nil, errors.New("invalid response format: missing 'fields' key")
+	}
+
+	fieldsCols, ok := fieldsVal.([]interface{})
+	if !ok {
+		// Handle nil or unexpected type
+		if fieldsVal == nil {
+			fieldsCols = []interface{}{}
+		} else {
+			return nil, nil, fmt.Errorf("invalid response format: 'fields' is %T, expected []interface{}", fieldsVal)
+		}
+	}
+
+	strFieldsCols := make([]string, 0, len(fieldsCols))
 	for _, col := range fieldsCols {
-		strFieldsCols = append(strFieldsCols, col.(string))
+		if colStr, ok := col.(string); ok {
+			strFieldsCols = append(strFieldsCols, colStr)
+		} else if col == nil {
+			strFieldsCols = append(strFieldsCols, "")
+		} else {
+			strFieldsCols = append(strFieldsCols, fmt.Sprintf("%v", col))
+		}
 	}
 
 	allData := []map[string]interface{}{}
@@ -86,23 +112,30 @@ func sendRequestData(signature byte, fields []interface{}, conn net.Conn) ([]str
 		"qid": -1,
 	})
 
-	i := 0
 	for {
-		i++
 		var pullResponse Message
 		pullResponse, err = sendRequest(pull.Signature(), pull.Fields(), conn)
 		if err != nil {
 			break
 		}
 
-		colsValues, isArray := pullResponse.Fields()[0].([]interface{})
+		pullFields := pullResponse.Fields()
+		if len(pullFields) == 0 {
+			return strFieldsCols, allData, nil
+		}
+
+		colsValues, isArray := pullFields[0].([]interface{})
 		if !isArray {
 			return strFieldsCols, allData, nil
 		}
 
-		row := map[string]interface{}{}
+		row := make(map[string]interface{}, len(strFieldsCols))
 		for i, field := range strFieldsCols {
-			row[field] = colsValues[i]
+			if i < len(colsValues) {
+				row[field] = colsValues[i]
+			} else {
+				row[field] = nil
+			}
 		}
 		allData = append(allData, row)
 	}
@@ -122,7 +155,7 @@ func packMessage(signature byte, fields []interface{}) ([]byte, error) {
 	if structSize < 16 {
 		buffer.WriteByte(0xB0 | byte(structSize))
 	} else {
-		return nil, errors.New("Too many fields in message structure")
+		return nil, errors.New("too many fields in message structure")
 	}
 
 	buffer.WriteByte(signature)
@@ -147,13 +180,13 @@ func readChunkedMessage(conn net.Conn) (Message, error) {
 		return nil, fmt.Errorf("failed to set read deadline: %w", err)
 	}
 	// Clear deadline when done
-	defer conn.SetReadDeadline(time.Time{})
+	defer func() { _ = conn.SetReadDeadline(time.Time{}) }()
 
 	for {
 		sizeBytes := make([]byte, 2)
 		if _, err := io.ReadFull(conn, sizeBytes); err != nil {
 			if err == io.EOF {
-				return nil, errors.New("Connection closed while reading chunk header")
+				return nil, errors.New("connection closed while reading chunk header")
 			}
 			return nil, fmt.Errorf("error reading chunk header: %w", err)
 		}
@@ -168,7 +201,7 @@ func readChunkedMessage(conn net.Conn) (Message, error) {
 		// Read chunk data
 		chunk := make([]byte, chunkSize)
 		if _, err := io.ReadFull(conn, chunk); err != nil {
-			return nil, errors.New(fmt.Sprintf("Error reading chunk data: %v", err))
+			return nil, fmt.Errorf("error reading chunk data: %w", err)
 		}
 
 		// Append to message buffer
@@ -177,15 +210,32 @@ func readChunkedMessage(conn net.Conn) (Message, error) {
 	reader := packstream.NewUnpacker(&messageData)
 	unpacked, err := reader.Unpack()
 	if err != nil {
-		return nil, errors.New(fmt.Sprintf("Error unpacking chunk data: %v", err))
+		return nil, fmt.Errorf("error unpacking chunk data: %w", err)
 	}
 
-	items := unpacked.([]interface{})
-	signature, fields := items[0].(byte), items[1].([]interface{})
+	items, ok := unpacked.([]interface{})
+	if !ok || len(items) < 2 {
+		return nil, errors.New("invalid message structure: expected [signature, fields]")
+	}
+
+	signature, ok := items[0].(byte)
+	if !ok {
+		return nil, fmt.Errorf("invalid message signature type: %T", items[0])
+	}
+
+	fields, ok := items[1].([]interface{})
+	if !ok {
+		// Handle nil fields
+		if items[1] == nil {
+			fields = []interface{}{}
+		} else {
+			return nil, fmt.Errorf("invalid message fields type: %T", items[1])
+		}
+	}
 
 	msg, err := CreateMessage(signature, fields)
 	if err != nil {
-		return nil, errors.New(fmt.Sprintf("Error creating message: %v", err))
+		return nil, fmt.Errorf("error creating message: %w", err)
 	}
 	return msg, nil
 }
