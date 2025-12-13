@@ -132,3 +132,12 @@ func (pc *pooledConn) idleTime() time.Duration {
 	}
 	return time.Since(pc.lastUsedAt)
 }
+
+// markDirty marks the connection as needing reset/re-auth after a failure.
+// This ensures the connection won't be reused in a failed state.
+func (pc *pooledConn) markDirty() {
+	pc.mu.Lock()
+	defer pc.mu.Unlock()
+
+	pc.authenticated = false
+}

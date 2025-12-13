@@ -137,7 +137,6 @@ func (d *driver) RunWithContext(ctx context.Context, query string, params map[st
 		}
 		return nil, nil, summary, err
 	}
-	defer d.netPool.Put(conn, err)
 
 	if d.config.Logging != nil && d.config.Logging.LogConnectionPool {
 		d.logger.Debug("Connection acquired from pool")
@@ -146,6 +145,7 @@ func (d *driver) RunWithContext(ctx context.Context, query string, params map[st
 	// Ensure connection is authenticated (with liveness check and conditional handshake)
 	pc, err := d.ensureAuthenticated(conn)
 	if err != nil {
+		d.netPool.Put(conn, err)
 		if d.observability != nil && d.config.Observability != nil {
 			d.observability.recordConnectionEvent("authenticate", d.config.Observability, err)
 			d.observability.finishQuerySpan(spanCtx, summary, err, d.config.Observability)
@@ -163,7 +163,7 @@ func (d *driver) RunWithContext(ctx context.Context, query string, params map[st
 	}
 
 	runMessage := messaging.NewRun(query, params, metaData)
-	cols, rows, err := runMessage.Send(pc.Conn)
+	cols, rows, queryErr := runMessage.Send(pc.Conn)
 
 	// Complete summary
 	summary.ExecutionTime = time.Since(startTime)
@@ -173,8 +173,9 @@ func (d *driver) RunWithContext(ctx context.Context, query string, params map[st
 	}
 
 	// Log query completion
-	if err != nil {
-		d.logger.Error("Query execution failed", "error", err, "duration", summary.ExecutionTime)
+	if queryErr != nil {
+		d.logger.Error("Query execution failed", "error", queryErr, "duration", summary.ExecutionTime)
+		pc.markDirty()
 	} else {
 		if d.config.Logging != nil && d.config.Logging.LogQueryTiming {
 			d.logger.Info("Query completed", "duration", summary.ExecutionTime, "records", summary.RecordsConsumed, "query_type", summary.QueryType)
@@ -183,12 +184,14 @@ func (d *driver) RunWithContext(ctx context.Context, query string, params map[st
 		}
 	}
 
+	d.netPool.Put(conn, queryErr)
+
 	// Finish observability span
 	if d.observability != nil && d.config.Observability != nil {
-		d.observability.finishQuerySpan(spanCtx, summary, err, d.config.Observability)
+		d.observability.finishQuerySpan(spanCtx, summary, queryErr, d.config.Observability)
 	}
 
-	return cols, rows, summary, err
+	return cols, rows, summary, queryErr
 }
 
 // RunStream implements StreamingDriver interface for memory-efficient query processing
