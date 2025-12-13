@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/seuros/gopher-cypher/src/connection_url_resolver"
+	"github.com/seuros/gopher-cypher/src/internal/testutil"
 )
 
 func dialOrSkip(t *testing.T, url string) {
@@ -18,16 +19,17 @@ func dialOrSkip(t *testing.T, url string) {
 }
 
 func TestRunWithWrongAuth(t *testing.T) {
-	dialOrSkip(t, "neo4j://memgraph:wrongpass@localhost:7687")
-	_, err := NewDriver("neo4j://memgraph:wrongpass@localhost:7687")
+	dialOrSkip(t, testutil.InvalidCredentialsURL())
+	_, err := NewDriver(testutil.InvalidCredentialsURL())
 	if err == nil {
 		t.Fatal("expected authentication error, got nil")
 	}
 	t.Logf("got expected error: %v", err)
 }
+
 func TestRunQuery(t *testing.T) {
-	dialOrSkip(t, "memgraph://memgraph:activecypher@localhost:7688")
-	dr, err := NewDriver("memgraph://memgraph:activecypher@localhost:7688")
+	dialOrSkip(t, testutil.MemgraphURL())
+	dr, err := NewDriver(testutil.MemgraphURL())
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
@@ -55,5 +57,4 @@ func TestRunQuery(t *testing.T) {
 	if len(rows) == 0 {
 		t.Fatalf("unexpected result: %v", rows)
 	}
-
 }

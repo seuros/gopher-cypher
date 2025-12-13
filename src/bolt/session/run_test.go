@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/seuros/gopher-cypher/src/connection_url_resolver"
+	"github.com/seuros/gopher-cypher/src/internal/testutil"
 )
 
 func newSessionOrSkip(t *testing.T, url string) Session {
@@ -25,7 +26,7 @@ func newSessionOrSkip(t *testing.T, url string) Session {
 }
 
 func TestRunQuery(t *testing.T) {
-	s := newSessionOrSkip(t, "memgraph://memgraph:activecypher@localhost:7688")
+	s := newSessionOrSkip(t, testutil.MemgraphURL())
 	defer s.Close()
 	ctx := context.Background()
 	cols, rows, err := s.Run(ctx, "RETURN 1 AS n", map[string]interface{}{}, map[string]interface{}{})
@@ -49,5 +50,4 @@ func TestRunQuery(t *testing.T) {
 	if len(rows) == 0 {
 		t.Fatalf("unexpected result: %v", rows)
 	}
-
 }

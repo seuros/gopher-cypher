@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/seuros/gopher-cypher/src/connection_url_resolver"
+	"github.com/seuros/gopher-cypher/src/internal/testutil"
 )
 
 func newDriverOrSkip(t *testing.T, url string) Driver {
@@ -46,27 +47,25 @@ func newDriverOrSkipTLS(t *testing.T, url string) Driver {
 }
 
 func TestPingMemgraph(t *testing.T) {
-	dr := newDriverOrSkip(t, "memgraph://memgraph:activecypher@localhost:7688")
+	dr := newDriverOrSkip(t, testutil.MemgraphURL())
 	defer dr.Close()
 
 	if err := dr.Ping(); err != nil {
 		t.Fatalf("%v", err)
 	}
-
 }
 
 func TestPingNeo4j(t *testing.T) {
-	dr := newDriverOrSkip(t, "neo4j://neo4j:activecypher@localhost:7687")
+	dr := newDriverOrSkip(t, testutil.Neo4jURL())
 	defer dr.Close()
 
 	if err := dr.Ping(); err != nil {
 		t.Fatalf("%v", err)
 	}
-
 }
 
 func TestPingNeo4jSSL(t *testing.T) {
-	dr := newDriverOrSkipTLS(t, "neo4j+ssl://neo4j:activecypher@localhost:7687")
+	dr := newDriverOrSkipTLS(t, testutil.Neo4jSSLURL())
 	defer dr.Close()
 
 	if err := dr.Ping(); err != nil {
@@ -75,7 +74,7 @@ func TestPingNeo4jSSL(t *testing.T) {
 }
 
 func TestPingNeo4jSSC(t *testing.T) {
-	dr := newDriverOrSkipTLS(t, "neo4j+ssc://neo4j:activecypher@localhost:7687")
+	dr := newDriverOrSkipTLS(t, testutil.Neo4jSSCURL())
 	defer dr.Close()
 
 	if err := dr.Ping(); err != nil {
